@@ -6,3 +6,9 @@ awscli
 folium
 geopandas
 xmltodict
+gdal
+patchify
+utm
+rioxarray
+osmnx
+opencv-python
