@@ -1,0 +1,8 @@
+requests
+pandas
+tabulate
+boto3
+awscli
+folium
+geopandas
+xmltodict
