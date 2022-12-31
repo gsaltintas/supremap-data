@@ -54,10 +54,22 @@ def download_tifs(url: str, args):
         exit('No items found')
     features.drop(['collection', 'type', 'stac_version'], axis=1, inplace=True)
     # returned object dict_keys(['id', 'collection', 'type', 'stac_version', 'geometry', 'bbox', 'properties', 'links', 'assets'])
+
+    args.save_dir.mkdir(exist_ok=True, parents=True)
+
+     # save geometry information per download
+    for index, geom in enumerate(features["geometry"]):
+        listString = json.dumps(geom["coordinates"][0])
+        
+        local_name = args.save_dir.joinpath(f"{features['id'][index]}.json")
+        jsonFile = open(local_name, "w")
+        jsonFile.write(listString)
+        jsonFile.close()
+
+
     features['tif'] = features['id'].map(lambda x: f'{x}_{args.resolution}_2056.tif')
     features['link'] = features.apply(lambda x: x['assets'][x['tif']]['href'], axis=1)
     print(features.loc[0, 'link'])
-    args.save_dir.mkdir(exist_ok=True, parents=True)
 
     def download_file(row):
         """Parses dataframe row, downloads files to the save_dir
@@ -69,7 +81,7 @@ def download_tifs(url: str, args):
         dt = row['properties']['datetime'][:10]
         bbox = '-'.join([f'{b:.2f}' for b in row['bbox']])
         link = row['link']
-        local_name = args.save_dir.joinpath(f"{row['id']}_{bbox}_{dt}")
+        local_name = args.save_dir.joinpath(f"{row['id']}_{bbox}_{dt}.tif")
 
         r = requests.get(link)
         f = open(local_name, 'wb')
