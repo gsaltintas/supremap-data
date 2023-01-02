@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 import xmltodict
+from sys import exit
 from tabulate import tabulate
 
 VERSION = '0.9'
@@ -39,9 +40,10 @@ def get_url(args, start_row:int = 0) -> str:
         bbox = args.bbox
         if len(bbox) != 4:
             raise ValueError(f'Bounding box argument must have exactly 4 elements in the following format: \"[LONGITUDE_WEST, LAT_SOUTH, LONG_EAST, LAT_NORTH]\".')
-        # todo check if the bbounding box is in switzerland
+
         items = True
-        bbox_polygon = f'{bbox[0]} {bbox[1]}, {bbox[2]} {bbox[1]}, {bbox[1]} {bbox[3]}, {bbox[0]} {bbox[3]}, {bbox[0]} {bbox[1]}'
+        bbox_polygon = f'{bbox[2]} {bbox[1]}, {bbox[0]} {bbox[1]}, {bbox[0]} {bbox[3]}, {bbox[2]} {bbox[3]}, {bbox[2]} {bbox[1]}'
+
         url += f'AND ( footprint:"Intersects(POLYGON(( {bbox_polygon} )))" ) '
         # daterange: datetime=2018-01-01/2018-12-31
     if args.date_range:
@@ -119,7 +121,6 @@ def download_zips(url: str, args, start_row:int =0):
     download_zips(url, args, start_row=start_row+args.rows)
 
 def unzip_sentinel(path_to_zip, out_path=None):
-
     zip_ref = zipfile.ZipFile(path_to_zip, 'r')
     if out_path is None:
         out_path = Path(path_to_zip)
