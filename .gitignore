@@ -131,3 +131,11 @@ dmypy.json
 
 /src/cache
 /src/swisstopo
+*.json
+*.jpg
+*.tif
+out/
+# Sentinel Downloads
+*.jp2
+*.zip
+S2B*

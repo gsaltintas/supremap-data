@@ -3,11 +3,11 @@ import json
 import warnings
 import zipfile
 from pathlib import Path
+from sys import exit
 
 import pandas as pd
 import requests
 import xmltodict
-from sys import exit
 from tabulate import tabulate
 
 VERSION = '0.9'
@@ -55,6 +55,7 @@ def get_url(args, start_row:int = 0) -> str:
             url += f' TO {datetime.datetime.fromisoformat(dates[1]).isoformat()}] '
         else:
             url += ' NOW] '
+    url += f' AND cloudcoverpercentage: [0 TO {args.max_cloud_cover}] '
     if args.order_by_position:
         url += '&orderby=beginposition'
     else:
@@ -94,6 +95,9 @@ def download_zips(url: str, args, start_row:int =0):
         # local_name = args.save_dir.joinpath(f"{row['id']}_{bbox}_{dt}")
         # local_name = args.save_dir.joinpath(f"{row['id']}").with_suffix('.zip')
         local_name = args.save_dir.joinpath(f"{row['title']}").with_suffix('.zip')
+        if local_name.exists():
+            print(f'{local_name} exists, skipping download.')
+            return
         try:
             session = requests.Session()
             session.auth = user, pwd
