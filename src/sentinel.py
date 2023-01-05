@@ -95,8 +95,8 @@ def download_zips(url: str, args, start_row:int =0):
         # local_name = args.save_dir.joinpath(f"{row['id']}_{bbox}_{dt}")
         # local_name = args.save_dir.joinpath(f"{row['id']}").with_suffix('.zip')
         local_name = args.save_dir.joinpath(f"{row['title']}").with_suffix('.zip')
-        if local_name.exists():
-            print(f'{local_name} exists, skipping download.')
+        if local_name.exists() or local_name.with_suffix('.SAFE').exists:
+            print(f'{local_name.stem} exists, skipping download.')
             return
         try:
             session = requests.Session()
