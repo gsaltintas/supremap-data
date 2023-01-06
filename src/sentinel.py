@@ -4,11 +4,11 @@ import time
 import warnings
 import zipfile
 from pathlib import Path
+from sys import exit
 
 import pandas as pd
 import requests
 import xmltodict
-from sys import exit
 from tabulate import tabulate
 
 VERSION = '0.9'

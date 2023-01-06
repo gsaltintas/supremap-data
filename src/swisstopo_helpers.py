@@ -1,14 +1,30 @@
 import datetime
 import json
+from pathlib import Path
 
+import geopandas as gp
 import pandas as pd
 import requests
+from geojson import Feature, GeoJSON, Polygon
 from tabulate import tabulate
 
 VERSION = '0.9'
 BASE_URL = f'https://data.geo.admin.ch/api/stac/v{VERSION}'
 SWISSTOPO_URL = f'{BASE_URL}/collections/ch.swisstopo.swissimage-dop10'
+import json
 
+
+class RoundingFloat(float):
+    # set floating number precision for geojson dumps
+    __repr__ = staticmethod(lambda x: format(x, '.10f'))
+
+json.encoder.c_make_encoder = None
+if hasattr(json.encoder, 'FLOAT_REPR'):
+    # Python 2
+    json.encoder.FLOAT_REPR = RoundingFloat.__repr__
+else:
+    # Python 3
+    json.encoder.float = RoundingFloat
 def send_request(url):
     """ 
     sends a get request to utl and checks its status, 
@@ -46,6 +62,7 @@ def get_url(args) -> str:
             url += f'/{dates[1]}'
     return url
 
+
 def download_tifs(url: str, args):
     """ downloads tifs based on the search specified by the url  into the args.save_dir"""
     response = send_request(url)
@@ -82,13 +99,30 @@ def download_tifs(url: str, args):
         bbox = '-'.join([f'{b:.2f}' for b in row['bbox']])
         link = row['link']
         local_name = args.save_dir.joinpath(f"{row['id']}_{bbox}_{dt}.tif")
+        assets = row['assets'][row['tif']]
 
-        r = requests.get(link)
-        f = open(local_name, 'wb')
-        for chunk in r.iter_content(chunk_size=512 * 1024):
-            if chunk:
-                f.write(chunk)
-        f.close()
+        if local_name.exists():
+            print(f'Found file {local_name}, skipping download.')
+        else:
+            r = requests.get(link)
+            f = open(local_name, 'wb')
+            for chunk in r.iter_content(chunk_size=512 * 1024):
+                if chunk:
+                    f.write(chunk)
+            f.close()
+
+        # save file's geojson data
+        geo_local_name = args.save_dir.joinpath(f"{row['id']}.geojson")
+        if geo_local_name.exists():
+            print(f'Found geojson file {geo_local_name}, skipping write.')
+        else:
+            mask_name = args.save_dir.joinpath(f"{row['id']}_segmentation.png").as_posix()
+            geo = Feature(id = row['id'], geometry = row['geometry'], properties={'datetime':row['properties']['datetime'], 'proj:epsg':assets['proj:epsg'], 'checksum:multihash':assets['checksum:multihash'], 'eo:gsd': assets['eo:gsd'], 'tif': local_name.as_posix(), 'mask': mask_name})
+            print(row['geometry'])
+            jsonFile = open(geo_local_name, "w")
+            
+            json.dump(geo, jsonFile, indent=4)
+            jsonFile.close()
 
     features = features.truncate(after=max(0, args.max_rows-1))
 

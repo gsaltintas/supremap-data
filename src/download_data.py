@@ -20,6 +20,7 @@ parser.add_argument('-b', '--bbox', help='Search by bounding box, enter in the f
 parser.add_argument('-d', '--date_range', help='Specify a date range in the following format: \"[START]\" or \"[START, END\", eg: \"[\\"2018-01-01\\", \\"2018-12-31\\"]\"', default=["2022-01-01", "2022-12-05"], type=json.loads)
 parser.add_argument('--save_dir', default='../out', help='Target directory',  type=lambda x: Path(x).resolve().absolute())
 parser.add_argument('-r', '--resolution', help='Ground sampling distance, available: 0.1 or 2', type=float, default=0.1)
+
 parser.add_argument('--rows', help='Rows to query for in the Sentinel API, max 100', type=int, default=20)
 parser.add_argument('--max_rows', help='Maximum number of rows to query.', type=int, default=20)
 parser.add_argument('--max_cloud_coverage_pct', help='Maximum cloud cover percentage.', type=int, default=20)

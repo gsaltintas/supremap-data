@@ -12,3 +12,8 @@ utm
 rioxarray
 osmnx
 opencv-python
+pyproj
+shapely
+geocube
+xarray
+geojson
