@@ -90,11 +90,15 @@ def download_tifs(url: str, args):
                 f.write(chunk)
         f.close()
 
+    features = features.truncate(after=max(0, args.max_rows-1))
+
     features.apply(download_file, axis=1)
+
+    args.max_rows = max(0, args.max_rows - len(features))
         
     with open('downloaded.csv', 'a') as f:
         features['link'].to_csv('downloaded.csv', index=False, header=False, mode='a')
-    if response['links'][-1]['rel'] == 'next':
-        url  = response['links'][-1]['href']
+    if args.max_rows > 0 and response['links'][-1]['rel'] == 'next':
+        url = response['links'][-1]['href']
         print('next page')
         download_tifs(url, args)

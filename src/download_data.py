@@ -21,8 +21,12 @@ parser.add_argument('-d', '--date_range', help='Specify a date range in the foll
 parser.add_argument('--save_dir', default='../out', help='Target directory',  type=lambda x: Path(x).resolve().absolute())
 parser.add_argument('-r', '--resolution', help='Ground sampling distance, available: 0.1 or 2', type=float, default=0.1)
 parser.add_argument('--rows', help='Rows to query for in the Sentinel API, max 100', type=int, default=20)
+parser.add_argument('--max_rows', help='Maximum number of rows to query.', type=int, default=20)
+parser.add_argument('--max_cloud_coverage_pct', help='Maximum cloud cover percentage.', type=int, default=20)
 parser.add_argument('--order_by_position', help='Sorts the results based on their position, by default this is turned off and sorting is done absed on the ingestion date', action='store_true')
 parser.add_argument('--desc', help='Sorts the results in the descending order if provided', action='store_true')
+parser.add_argument('--processing_level', help='Processing level to filter for.', type=str, default=None)
+parser.add_argument('--force_metadata_regeneration', help='Force regeneration of metadata.', action='store_true')
     
 args = parser.parse_args()
 

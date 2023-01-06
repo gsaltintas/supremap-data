@@ -1,5 +1,6 @@
 import datetime
 import json
+import time
 import warnings
 import zipfile
 from pathlib import Path
@@ -17,6 +18,7 @@ import os
 pwd = os.environ['DHUS_PASSWORD'] 
 user = os.environ['DHUS_USER'] 
 
+
 def send_request(url, a, b):
     """ 
     sends a get request to utl and checks its status, 
@@ -30,11 +32,16 @@ def send_request(url, a, b):
     response_json = json.loads(json.dumps(xmltodict.parse(decoded_response)))
     return response_json
 
+
 def get_url(args, start_row:int = 0) -> str:
     """ constructs query url based on passed arguments """
     #  https://apihub.copernicus.eu/apihub/search?q= platformname:Sentinel-2 AND beginPosition:[2022-01-01T06:00:00.000Z TO 2022-01-05T06:00:00.000Z] AND ( footprint:"Intersects(POLYGON((5.0000000000000 46.0000000000000,10.0000000000000 46.0000000000000,10.0000000000000 48.0000000000000,5.0000000000000 48.0000000000000,5.0000000000000 46.0000000000000 )))")&rows=25&start=0
     # url = f'{BASE_URL}/search?q= platformname:Sentinel-2 '
-    url = f'{BASE_URL}/search?start={start_row}&rows={args.rows}&q= platformname:Sentinel-2 '
+    # 'cloudcoverpercentage:["0" TO "30"]'
+    url = f'{BASE_URL}/search?start={start_row}&rows={args.rows}' +\
+          f'&q=platformname:Sentinel-2 AND (cloudcoverpercentage:[0 TO {args.max_cloud_coverage_pct}])'
+    if args.processing_level not in {None, ''}:
+        url += f' AND processinglevel:"{args.processing_level}"'
     items = False
     if args.bbox:
         bbox = args.bbox
@@ -44,7 +51,7 @@ def get_url(args, start_row:int = 0) -> str:
         items = True
         bbox_polygon = f'{bbox[2]} {bbox[1]}, {bbox[0]} {bbox[1]}, {bbox[0]} {bbox[3]}, {bbox[2]} {bbox[3]}, {bbox[2]} {bbox[1]}'
 
-        url += f'AND ( footprint:"Intersects(POLYGON(( {bbox_polygon} )))" ) '
+        url += f' AND ( footprint:"Intersects(POLYGON(( {bbox_polygon} )))" ) '
         # daterange: datetime=2018-01-01/2018-12-31
     if args.date_range:
         dates = args.date_range
@@ -62,27 +69,34 @@ def get_url(args, start_row:int = 0) -> str:
     url += ' desc' if args.desc else ' asc'
     return url
 
-def download_zips(url: str, args, start_row:int =0):
+
+def download_zips(url: str, args, start_row:int=0):
     """ downloads tifs based on the search specified by the url  into args.save_dir"""
     response_json = send_request(url, user, pwd)
     print(url)
     if 'entry' not in response_json['feed']:
-        exit(f'No {"more" if start_row > 0 else ""} items found')
-        
+        print(f'No{" more" if start_row > 0 else ""} items found')
+        return []
+
     # opensearch:itemsPerPage
     # title = response_json['feed']['entry'][0]['link']
     features = pd.DataFrame(response_json['feed']['entry'])
     # returned columns: Index(['title', 'link', 'id', 'summary', 'ondemand', 'date', 'int', 'double', 'str'],
     if len(features) == 0:
-        exit('No items found')
+        print('No items found')
+        return []
+    
     features.drop(['ondemand', 'int'], axis=1, inplace=True)
     features['links'] = features.apply(lambda x: x['link'][0]['@href'], axis=1)
     features['alternative_link'] = features.apply(lambda x: x['link'][1]['@href'], axis=1)
     features['icon_link'] = features.apply(lambda x: x['link'][2]['@href'], axis=1)
     args.save_dir.mkdir(exist_ok=True, parents=True)
 
-    features['bbox'] = features['str'].apply(lambda x: x[1]['#text'])
+    features['bbox'] = features['str'].apply(lambda x:
+                                             next(filter(lambda el: '#text' in el
+                                                         and 'gml:coordinates>' in el['#text'], x))['#text'])
     features['bbox'] = features['bbox'].apply(lambda x: x.split('gml:coordinates>')[1][:-2].split(','))
+
     def download_file(row):
         """
         Parses dataframe row, downloads files to the save_dir
@@ -94,31 +108,41 @@ def download_zips(url: str, args, start_row:int =0):
         # local_name = args.save_dir.joinpath(f"{row['id']}_{bbox}_{dt}")
         # local_name = args.save_dir.joinpath(f"{row['id']}").with_suffix('.zip')
         local_name = args.save_dir.joinpath(f"{row['title']}").with_suffix('.zip')
-        try:
-            session = requests.Session()
-            session.auth = user, pwd
-            r = session.get(link, stream=True)
-            print(row['link'])
-            r.raise_for_status()
-            print(r.status_code)
-            f = open(local_name, 'wb')
-            for chunk in r.iter_content(chunk_size=512 * 1024):
-                if chunk:
-                    f.write(chunk)
-            f.close()
-            unzip_sentinel(path_to_zip=local_name, out_path=args.save_dir)
-        except  requests.exceptions.RequestException as e:
-            warnings.warn(f'Problem with current request: {e}')
-        except Exception as e:
-            warnings.warn(f'Problem: {e}')
+        unzipped_local_name = local_name.with_suffix('.SAFE')
+        if not os.path.exists(unzipped_local_name):
+            try:
+                session = requests.Session()
+                session.auth = user, pwd
+                r = session.get(link, stream=True)
+                print(row['link'])
+                r.raise_for_status()
+                print(r.status_code)
+                f = open(local_name, 'wb')
+                for chunk in r.iter_content(chunk_size=512 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                f.close()
+                unzip_sentinel(path_to_zip=local_name, out_path=args.save_dir)
+            except requests.exceptions.RequestException as e:
+                warnings.warn(f'Problem with current request: {e}')
+            except Exception as e:
+                warnings.warn(f'Problem: {e}')
+        return unzipped_local_name
 
-    features.apply(download_file, axis=1)
+    features = features.truncate(after=max(0, args.max_rows-1))
+    downloaded = list(map(str, features.apply(download_file, axis=1)))
         
+    args.max_rows = max(0, args.max_rows - len(features))
+
     with open('sentinel_downloaded.csv', 'a') as f:
         features['link'].to_csv(args.save_dir.joinpath('sentinel_downloaded.csv'), index=False, header=False, mode='a')
     print(f'Done with the range {start_row}-{start_row+args.rows-1}. ')
-    url = get_url(args, start_row=start_row+args.rows)
-    download_zips(url, args, start_row=start_row+args.rows)
+    if args.max_rows > 0:
+        url = get_url(args, start_row=start_row+args.rows)
+        return [*downloaded, *download_zips(url, args, start_row=start_row+args.rows)]
+    else:
+        return downloaded
+
 
 def unzip_sentinel(path_to_zip, out_path=None):
     zip_ref = zipfile.ZipFile(path_to_zip, 'r')
