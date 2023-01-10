@@ -10,11 +10,12 @@ import time
 
 
 def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format, create_tags, keep_fractional,
-             keep_blanks, bboxes=None, output_naming_scheme='patch_idx', output_naming_prefix=None):
+             keep_blanks, bboxes=None, output_naming_scheme='patch_idx', output_naming_prefix=''):
     # "inputs" can be list of dirs, or GeoTiffs
     # should return list of GeoTiffs
     os.makedirs(output_dir, exist_ok=True)
     input_geotiffs = []
+    output_paths = []
     num_channels = -1
 
     # We assume all images use the same coordinate system, due to the nontrivial conversion between coordinate reference
@@ -122,8 +123,6 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
     y_keys = list(map(lambda el: el[0], y_dict_pxs))
 
     num_x_keys = len(y_dict_pxs)
-    
-    active_geotiffs = set()
 
     patch_y_xs = SortedDict()
 
@@ -171,6 +170,7 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
     for patch_y_idx, patch_y_coords in enumerate(patch_y_xs.keys()):
         patch_y_start, patch_y_end, *orig_y_coords = patch_y_coords
         
+        active_geotiffs = set()
         geotiffs_to_disable = []
 
         x_keys_pos = 0
@@ -185,18 +185,22 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
             # keep a list of currently active TIFFs that need to be disabled after the current patch
             
             if len(orig_x_coords) == 2:
-                patch_x_start_coords = orig_x_coords[0]
-                patch_x_end_coords = orig_x_coords[1]
+                patch_x_start_coords = min(orig_x_coords[0], orig_x_coords[1])
+                patch_x_end_coords = max(orig_x_coords[0], orig_x_coords[1])
             else:
-                patch_x_start_coords = leftmost_geotiff.get_coords(patch_x_start, patch_y_start)[0]
-                patch_x_end_coords = leftmost_geotiff.get_coords(patch_x_end, patch_y_end)[0]
+                coords_0 = leftmost_geotiff.get_coords(patch_x_start, patch_y_start)[0]
+                coords_1 = leftmost_geotiff.get_coords(patch_x_end, patch_y_end)[0]
+                patch_x_start_coords = min(coords_0, coords_1)
+                patch_x_end_coords = max(coords_0, coords_1)
 
             if len(orig_y_coords) == 2:
-                patch_y_start_coords = orig_y_coords[0]
-                patch_y_end_coords = orig_y_coords[1]
+                patch_y_start_coords = min(orig_y_coords[0], orig_y_coords[1])
+                patch_y_end_coords = max(orig_y_coords[0], orig_y_coords[1])
             else:
-                patch_y_start_coords = topmost_geotiff.get_coords(patch_x_start, patch_y_start)[1]
-                patch_y_end_coords = topmost_geotiff.get_coords(patch_x_end, patch_y_end)[1]
+                coords_0 = topmost_geotiff.get_coords(patch_x_start, patch_y_start)[1]
+                coords_1 = topmost_geotiff.get_coords(patch_x_end, patch_y_end)[1]
+                patch_y_start_coords = min(coords_0, coords_1)
+                patch_y_end_coords = max(coords_0, coords_1)
 
             while x_keys_pos < num_x_keys and x_keys[x_keys_pos] < patch_x_end:
                 event = x_dict_pxs[x_keys_pos][1]
@@ -204,8 +208,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 event_gt = event[1]
                 if event_type == 'start':
                     # check if this GT intersects with the active segment in the Y dimension
-                    event_gt_top = event_gt.tif_bBox[0][1]
-                    event_gt_btm = event_gt.tif_bBox[1][1]
+                    event_gt_top = max(event_gt.tif_bBox[0][1], event_gt.tif_bBox[1][1])
+                    event_gt_btm = min(event_gt.tif_bBox[0][1], event_gt.tif_bBox[1][1])
 
                     # use < instead of <= for upper limits
                     if ((event_gt_btm            <= patch_y_start_coords < event_gt_top)
@@ -213,7 +217,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                         or (patch_y_start_coords <= event_gt_top < patch_y_end_coords)
                         or (patch_y_start_coords <= event_gt_btm < patch_y_end_coords)):
                         active_geotiffs.add(event_gt)
-                elif event_type == 'end' and event_gt in active_geotiffs:
+                elif event_type == 'end' and event_gt in active_geotiffs and x_keys[x_keys_pos] < patch_x_start:
+                    # last check is crucial: there could be other (bbox) patches that overlap with this one!
                     geotiffs_to_disable.append(event_gt)
                 x_keys_pos += 1
 
@@ -226,7 +231,7 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 x_px_box = leftmost_geotiff.get_int_box(gt.tif_bBox)
 
                 px_box = ((x_px_box[0][0], y_px_box[0][1]), (x_px_box[1][0], y_px_box[1][1]))
-                
+
                 # determine intersection with current patch, then backproject to this geotiff's coord system
                 px_box_inter = ((max(px_box[0][0], patch_x_start), max(px_box[0][1], patch_y_start)),
                                 (min(px_box[1][0], patch_x_end), min(px_box[1][1], patch_y_end)))
@@ -310,6 +315,9 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                     img.save(output_path, tiffinfo=img.tag_v2)
                 else:
                     img.save(output_path)
+            output_paths.append(output_path)
+    
+    return output_paths
 
 
 if __name__ == '__main__':
