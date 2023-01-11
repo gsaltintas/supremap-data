@@ -8,23 +8,14 @@ import requests
 from geojson import Feature, GeoJSON, Polygon
 from tabulate import tabulate
 
+from utils import dummy_func
+
+dummy_func()
+
 VERSION = '0.9'
 BASE_URL = f'https://data.geo.admin.ch/api/stac/v{VERSION}'
 SWISSTOPO_URL = f'{BASE_URL}/collections/ch.swisstopo.swissimage-dop10'
-import json
 
-
-class RoundingFloat(float):
-    # set floating number precision for geojson dumps
-    __repr__ = staticmethod(lambda x: format(x, '.10f'))
-
-json.encoder.c_make_encoder = None
-if hasattr(json.encoder, 'FLOAT_REPR'):
-    # Python 2
-    json.encoder.FLOAT_REPR = RoundingFloat.__repr__
-else:
-    # Python 3
-    json.encoder.float = RoundingFloat
 def send_request(url):
     """ 
     sends a get request to utl and checks its status, 
