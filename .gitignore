@@ -139,3 +139,10 @@ out/
 *.jp2
 *.zip
 S2B*
+*.xml
+*.csv
+*.html
+*.bz2
+*.qgz
+src/tmp/*
+tmp/*
