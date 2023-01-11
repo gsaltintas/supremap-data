@@ -184,6 +184,9 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
 
             # keep a list of currently active TIFFs that need to be disabled after the current patch
             
+            if len(orig_x_coords) == 1:
+                orig_x_coords = orig_x_coords[0]
+
             if len(orig_x_coords) == 2:
                 patch_x_start_coords = min(orig_x_coords[0], orig_x_coords[1])
                 patch_x_end_coords = max(orig_x_coords[0], orig_x_coords[1])
@@ -193,14 +196,17 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 patch_x_start_coords = min(coords_0, coords_1)
                 patch_x_end_coords = max(coords_0, coords_1)
 
+            if len(orig_y_coords) == 1:
+                orig_y_coords = orig_y_coords[0]
+            
             if len(orig_y_coords) == 2:
-                patch_y_start_coords = min(orig_y_coords[0], orig_y_coords[1])
-                patch_y_end_coords = max(orig_y_coords[0], orig_y_coords[1])
+                patch_y_start_coords = max(orig_y_coords[0], orig_y_coords[1])
+                patch_y_end_coords = min(orig_y_coords[0], orig_y_coords[1])
             else:
                 coords_0 = topmost_geotiff.get_coords(patch_x_start, patch_y_start)[1]
                 coords_1 = topmost_geotiff.get_coords(patch_x_end, patch_y_end)[1]
-                patch_y_start_coords = min(coords_0, coords_1)
-                patch_y_end_coords = max(coords_0, coords_1)
+                patch_y_start_coords = max(coords_0, coords_1)
+                patch_y_end_coords = min(coords_0, coords_1)
 
             while x_keys_pos < num_x_keys and x_keys[x_keys_pos] < patch_x_end:
                 event = x_dict_pxs[x_keys_pos][1]
@@ -214,8 +220,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                     # use < instead of <= for upper limits
                     if ((event_gt_btm            <= patch_y_start_coords < event_gt_top)
                         or (event_gt_btm         <= patch_y_end_coords < event_gt_top)
-                        or (patch_y_start_coords <= event_gt_top < patch_y_end_coords)
-                        or (patch_y_start_coords <= event_gt_btm < patch_y_end_coords)):
+                        or (patch_y_end_coords <= event_gt_top < patch_y_start_coords)
+                        or (patch_y_end_coords <= event_gt_btm < patch_y_start_coords)):
                         active_geotiffs.add(event_gt)
                 elif event_type == 'end' and event_gt in active_geotiffs and x_keys[x_keys_pos] < patch_x_start:
                     # last check is crucial: there could be other (bbox) patches that overlap with this one!
@@ -270,7 +276,7 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 nonlocal output_naming_prefix
                 ctr = '' if counter <= 1 else f'_{counter}'
                 if output_naming_scheme == 'prefix_only':
-                    fn = f'{output_naming_prefix}.{output_format}'
+                    fn = f'{output_naming_prefix}{ctr}.{output_format}'
                 else:
                     if output_naming_prefix not in {None, ''} and not output_naming_prefix[-1] == '_':
                         output_naming_prefix += '_'
