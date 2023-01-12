@@ -1,6 +1,7 @@
 # run this script after the segmentation PNGs and the coordinate JSONs are in the "swisstopo" folder
 
 import argparse
+from geotiff import GeoTiff
 import json
 import os
 from patchify_tiff import patchify
@@ -9,7 +10,10 @@ from PIL import Image
 from pyproj import Proj
 import re
 import sentinel
+import shutil
 from tag_geotiff import create_geotiff_metadata
+import tempfile
+from transform_to_wgs84 import transform_to_wgs84
 import xml.etree.ElementTree as ET
 
 
@@ -148,7 +152,8 @@ def postprocess_sentinel_data(args):
               continue
       
             old_img_path = os.path.join(root, fn)
-            new_img_path = f'{args.uncropped_geotiff_dir}/{fn.replace(".jp2", ".tiff").replace(".JP2", ".TIFF")}'
+            new_fn = fn.replace('.jp2', '.tiff').replace('.JP2', '.TIFF')
+            new_img_path = f'{args.uncropped_geotiff_dir}/{new_fn}'
             if not os.path.isfile(new_img_path):
               print(f'Converting: {old_img_path} to {new_img_path}... ', end=None)
               pixel_x_y = (0.0, 0.0)
@@ -168,37 +173,57 @@ def postprocess_sentinel_data(args):
 def download_sentinel_data(args):
     coord_dir = Path(args.input_dir)
     for entry in coord_dir.iterdir():
-        if entry.name.endswith(".tif") and all(s not in entry.name for s in ['_segmentation', '_lowres']):
+        if entry.name.endswith('.tif') and all(s not in entry.name for s in ['_segmentation', '_lowres']):
             print(f'***** {entry.name} *****')
-            image_id = re.search("swissimage-dop10_([0-9]+)_[0-9]+-[0-9]+", entry.name)[0]
-            json_file = image_id + ".json"
-            print(json_file)
-            fileObject = open(coord_dir.joinpath(json_file), "r")
-            jsonContent = fileObject.read()
-            coordList = json.loads(jsonContent)
-
+            image_id = re.search('swissimage-dop10_([0-9]+)_[0-9]+-[0-9]+', entry.name)[0]
+            json_file = f'{image_id}.json'
+            with open(coord_dir.joinpath(json_file), 'r') as f:
+              coord_list = json.load(f)
             # format: [LON_WEST, LAT_SOUTH, LON_EAST, LAT_NORTH]
-            input_bbox = [coordList[0][0], coordList[1][1], coordList[3][0], coordList[0][1]]
+            input_bbox = [coord_list[0][0], coord_list[1][1], coord_list[3][0], coord_list[0][1]]
+            
+            print(f'{coord_list=}')
+            print(f'{input_bbox=}')
 
-            print(f'coordList: {coordList}')
-            print(f'bbox: {input_bbox}')
             sentinel_args.bbox = input_bbox
             url = sentinel.get_url(sentinel_args)
             downloaded = sentinel.download_zips(url, sentinel_args)
             print(f'Downloaded into: {downloaded}')
             postprocess_sentinel_data(sentinel_args)
-            
+
+            gt = GeoTiff(str(entry))
+
+            # create temporary image of upscaled region
+            margin = 0.01  # in lon/lat
+
             proj = Proj(args.crs_code)
+            extended_bbox_wgs = [elem + m for elem, m in zip(input_bbox, [-margin, -margin, margin, margin])]
+            
+            extended_bbox_sw = proj.transform(extended_bbox_wgs[0], extended_bbox_wgs[1])
+            extended_bbox_ne = proj.transform(extended_bbox_wgs[2], extended_bbox_wgs[3])
+            extended_bbox = (extended_bbox_sw, extended_bbox_ne)
+
+            tmp_dir = tempfile.mkdtemp()
+            # need the bump here for alignment
+            upsampled_img_path = patchify([str(args.uncropped_geotiff_dir)], tmp_dir, bboxes=[extended_bbox],
+                                          bbox_patch_sizes=[(20, 20, True)],
+                                          patch_width_px=0, patch_height_px=0, output_format='tiff',
+                                          create_tags=True, keep_fractional=True, keep_blanks=True, add_bump=True)[0]
+
+            transformed_img_path = transform_to_wgs84(inputs=[upsampled_img_path], output_dir=tmp_dir)[0]
+
             proj_bbox_sw = proj.transform(input_bbox[0], input_bbox[1])
             proj_bbox_ne = proj.transform(input_bbox[2], input_bbox[3])
             proj_bbox = (proj_bbox_sw, proj_bbox_ne)
 
             print(f'{proj_bbox=}')
-            patchify(inputs=[str(args.uncropped_geotiff_dir)], output_dir=args.input_dir,
-                     output_naming_scheme='prefix_only',
-                     patch_width_px=0, patch_height_px=0, output_format='tiff', create_tags=True,
-                     keep_fractional=True, keep_blanks=True,
-                     bboxes=[proj_bbox], output_naming_prefix=os.path.splitext(entry.name)[0] + '_lowres')
+            patchify(inputs=[transformed_img_path], output_dir=args.input_dir,
+                     output_naming_scheme='prefix_only', output_format='tiff',
+                     output_naming_prefix=os.path.splitext(entry.name)[0] + '_lowres',
+                     patch_width_px=0, patch_height_px=0, create_tags=True, keep_fractional=True, keep_blanks=True,
+                     bboxes=[input_bbox], bbox_patch_sizes=[(gt.tif_shape[1], gt.tif_shape[0])], add_bump=True)
+
+            shutil.rmtree(tmp_dir)
 
 
 if __name__ == '__main__':

@@ -8,11 +8,23 @@ from PIL.TiffImagePlugin import ImageFileDirectory_v2
 from sortedcontainers import SortedDict, SortedList
 import time
 
+from utils import custom_get_int_box
+
 
 def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format, create_tags, keep_fractional,
-             keep_blanks, bboxes=None, output_naming_scheme='patch_idx', output_naming_prefix=''):
+             keep_blanks, bboxes=None, regular_patch_size=None, bbox_patch_sizes=None,
+             resizing_interpolation_method='bicubic', output_naming_scheme='patch_idx', output_naming_prefix='',
+             add_bump=False):
     # "inputs" can be list of dirs, or GeoTiffs
     # should return list of GeoTiffs
+
+    if resizing_interpolation_method not in ['', None]:
+        filters = {'nearest': Image.NEAREST, 'nearest_neighbor': Image.NEAREST,
+                   'bilinear': Image.BILINEAR, 'bicubic': Image.BICUBIC}
+        resizing_interpolation_filter = filters[resizing_interpolation_method]
+    else:
+        resizing_interpolation_filter = None
+
     os.makedirs(output_dir, exist_ok=True)
     input_geotiffs = []
     output_paths = []
@@ -99,8 +111,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
     for gt in geotiffs:
         bbox = gt.tif_bBox
 
-        leftmost_bbox = leftmost_geotiff.get_int_box(bbox)
-        topmost_bbox = topmost_geotiff.get_int_box(bbox)
+        leftmost_bbox = custom_get_int_box(leftmost_geotiff, bbox, add_bump=add_bump)
+        topmost_bbox = custom_get_int_box(topmost_geotiff, bbox, add_bump=add_bump)
 
         x_start_px = leftmost_bbox[0][0]
         y_start_px = topmost_bbox[0][1]
@@ -147,35 +159,58 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 patch_y_xs[(patch_y_start, patch_y_end)].add((patch_x_start, patch_x_end))
 
     if bboxes not in [None, []]:
-        for bbox in bboxes:
+        for bbox_idx, bbox in enumerate(bboxes):
             if isinstance(bbox, str):
                 bbox = eval(bbox)
             if len(bbox) == 2:
                 bbox = (bbox[0][0], bbox[0][1], bbox[1][0], bbox[1][1])
+            
             # bbox provided in format: (LON_WEST, LAT_SOUTH, LON_EAST, LAT_NORTH)
             # get_int_box expects: (LON_WEST, LAT_NORTH, LON_EAST, LAT_SOUTH)
             gt_bbox = ((bbox[0], bbox[3]), (bbox[2], bbox[1]))
-            int_box_x = leftmost_geotiff.get_int_box(gt_bbox)
-            int_box_y = topmost_geotiff.get_int_box(gt_bbox)
+            int_box_x = custom_get_int_box(leftmost_geotiff, gt_bbox, add_bump=add_bump)
+            int_box_y = custom_get_int_box(topmost_geotiff, gt_bbox, add_bump=add_bump)
             
             patch_x_start = int_box_x[0][0]
             patch_x_end = int_box_x[1][0]
             patch_y_start = int_box_y[0][1]
             patch_y_end = int_box_y[1][1]
 
+            if bbox_patch_sizes is not None and bbox_idx < len(bbox_patch_sizes):
+                bbox_patch_size = bbox_patch_sizes[bbox_idx]
+                if isinstance(bbox_patch_size, str):
+                    bbox_patch_size = eval(bbox_patch_size)
+            else:
+                bbox_patch_size = None
+
             y_bbox = (patch_y_start, patch_y_end, (bbox[3], bbox[1]))
             patch_y_xs[y_bbox] = SortedList()
-            patch_y_xs[y_bbox].add((patch_x_start, patch_x_end, (bbox[0], bbox[2])))
+            if bbox_patch_size is not None:
+                patch_y_xs[y_bbox].add((patch_x_start, patch_x_end, (bbox[0], bbox[2]), bbox_patch_size))
+            else:
+                patch_y_xs[y_bbox].add((patch_x_start, patch_x_end, (bbox[0], bbox[2])))
 
     for patch_y_idx, patch_y_coords in enumerate(patch_y_xs.keys()):
-        patch_y_start, patch_y_end, *orig_y_coords = patch_y_coords
+        patch_y_start, patch_y_end, *extra_data_y = patch_y_coords
         
+        extra_data_y += max(0, 1 - len(extra_data_y)) * [None]
+        orig_y_coords = extra_data_y[0]
+
         active_geotiffs = set()
         geotiffs_to_disable = []
 
         x_keys_pos = 0
         for patch_x_idx, patch_x_coords in enumerate(patch_y_xs[patch_y_coords]):
-            patch_x_start, patch_x_end, *orig_x_coords = patch_x_coords
+            patch_x_start, patch_x_end, *extra_data_x = patch_x_coords
+            
+            extra_data_x += max(0, 2 - len(extra_data_x)) * [None]
+            orig_x_coords, patch_size = extra_data_x
+            patch_size = patch_size or regular_patch_size
+
+            if len(extra_data_x) >= 1:
+                orig_x_coords = extra_data_x[0]
+            else:
+                orig_x_coords = None
 
             for geotiff_to_disable in geotiffs_to_disable:
                 active_geotiffs.remove(geotiff_to_disable)
@@ -183,11 +218,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
             geotiffs_to_disable.clear()
 
             # keep a list of currently active TIFFs that need to be disabled after the current patch
-            
-            if len(orig_x_coords) == 1:
-                orig_x_coords = orig_x_coords[0]
 
-            if len(orig_x_coords) == 2:
+            if orig_x_coords is not None and len(orig_x_coords) == 2:
                 patch_x_start_coords = min(orig_x_coords[0], orig_x_coords[1])
                 patch_x_end_coords = max(orig_x_coords[0], orig_x_coords[1])
             else:
@@ -195,11 +227,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 coords_1 = leftmost_geotiff.get_coords(patch_x_end, patch_y_end)[0]
                 patch_x_start_coords = min(coords_0, coords_1)
                 patch_x_end_coords = max(coords_0, coords_1)
-
-            if len(orig_y_coords) == 1:
-                orig_y_coords = orig_y_coords[0]
             
-            if len(orig_y_coords) == 2:
+            if orig_y_coords is not None and len(orig_y_coords) == 2:
                 patch_y_start_coords = max(orig_y_coords[0], orig_y_coords[1])
                 patch_y_end_coords = min(orig_y_coords[0], orig_y_coords[1])
             else:
@@ -219,9 +248,9 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
 
                     # use < instead of <= for upper limits
                     if ((event_gt_btm            <= patch_y_start_coords < event_gt_top)
-                        or (event_gt_btm         <= patch_y_end_coords < event_gt_top)
-                        or (patch_y_end_coords <= event_gt_top < patch_y_start_coords)
-                        or (patch_y_end_coords <= event_gt_btm < patch_y_start_coords)):
+                        or (event_gt_btm         <= patch_y_end_coords   < event_gt_top)
+                        or (patch_y_end_coords   <= event_gt_top         < patch_y_start_coords)
+                        or (patch_y_end_coords   <= event_gt_btm         < patch_y_start_coords)):
                         active_geotiffs.add(event_gt)
                 elif event_type == 'end' and event_gt in active_geotiffs and x_keys[x_keys_pos] < patch_x_start:
                     # last check is crucial: there could be other (bbox) patches that overlap with this one!
@@ -233,8 +262,8 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
 
             # paint this patch: create numpy array from zarrs of patches
             for gt in active_geotiffs:
-                y_px_box = topmost_geotiff.get_int_box(gt.tif_bBox)
-                x_px_box = leftmost_geotiff.get_int_box(gt.tif_bBox)
+                y_px_box = custom_get_int_box(topmost_geotiff, gt.tif_bBox, add_bump=add_bump)
+                x_px_box = custom_get_int_box(leftmost_geotiff, gt.tif_bBox, add_bump=add_bump)
 
                 px_box = ((x_px_box[0][0], y_px_box[0][1]), (x_px_box[1][0], y_px_box[1][1]))
 
@@ -307,17 +336,31 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                 print('No GeoTIFF overlaps found; skipping blank patch.')
             else:
                 img = Image.fromarray(patch_arr.astype(np.uint8))
+                orig_img_width, orig_img_height = (img.width, img.height)
+                    
+                if patch_size is not None:
+                    if len(patch_size) == 3 and patch_size[2]:
+                        pas = patch_arr.shape
+                        patch_size = (round(pas[1] * patch_size[0]), round(pas[0] * patch_size[1]))
+                    img = img.resize(size=patch_size, resample=resizing_interpolation_filter)
 
                 if create_tags:
                     img.tag_v2 = ImageFileDirectory_v2()
                     with Image.open(first_geotiff_path) as first_geotiff:
-                        for to_copy in {34735, 34736, 34737, 33550, 1024, 1025, 2016, *range(2048, 2062),
-                                        *range(3072, 3096), *range(4096, 5000)}:
+                        for to_copy in {1024, 1025, 2016, *range(2048, 2062), *range(3072, 3096), *range(4096, 5000),
+                                        33550, 34735, 34736, 34737}:
                             if to_copy in first_geotiff.tag_v2:
                                 img.tag_v2[to_copy] = first_geotiff.tag_v2[to_copy]
                     
-                    # change ModelTiepointTag; assume ModelPixelScaleTag stays the same
-                    img.tag_v2[33922] = (0.0, 0.0, 0.0, patch_x_start_coords, patch_y_start_coords, 0.0)  # i, j, k, x, y, z
+                    # change ModelTiepointTag; i, j, k, x, y, z
+                    img.tag_v2[33922] = (0.0, 0.0, 0.0, patch_x_start_coords, patch_y_start_coords, 0.0)
+                    
+                    if patch_size is not None:  # else assume ModelPixelScaleTag stays the same
+                        pst = img.tag_v2[33550]
+                        img.tag_v2[33550] = (pst[0] * (orig_img_width / patch_size[0]),
+                                             pst[1] * (orig_img_height / patch_size[1]),
+                                             pst[2])
+                    
                     img.save(output_path, tiffinfo=img.tag_v2)
                 else:
                     img.save(output_path)
@@ -348,11 +391,22 @@ if __name__ == '__main__':
                         type=str, action='append', default=None)
     parser.add_argument('-B', '--skip-blanks', help='Whether to skip patches for which no overlap with an input image '\
                         'exists.', action='store_true')
+    parser.add_argument('--regular-patch-size', help='(width, height) to resize regular patches to. Omit to preserve '\
+                                                     'original size. Use (scale_x, scale_y, True) to specify rescaling '\
+                                                     'ratios rather than absolute sizes.', type=str, default=None)
+    parser.add_argument('--bbox-patch-sizes', help='(width, height) to resize bbox patches to. Supply one pair per '\
+                                                   'bbox. Omit to preserve original size. Use (scale_x, scale_y, True) '\
+                                                   'to specify rescaling ratios rather than absolute sizes.',
+                        type=str, action='append', default=None)
+    parser.add_argument('--resizing-interpolation-method', help='Interpolation method to use when resizing patches. '\
+                                                                'Choose between: bilinear, bicubic, nearest_neighbor.',
+                        type=str, choices=['nearest', 'nearest_neighbor', 'bilinear', 'bicubic'], default='bicubic')
 
     args = parser.parse_args()
     if args.output_dir is None:
         args.output_dir = f'supremap_patchification_{int(time.time())}'
 
     patchify(args.input_dir, args.output_dir, args.patch_width, args.patch_height, args.output_format,
-             not args.skip_tagging, not args.skip_fractional, not args.skip_blanks, args.bbox,
-             args.output_naming_scheme, args.output_naming_prefix)
+             not args.skip_tagging, not args.skip_fractional, not args.skip_blanks, args.bbox, args.regular_patch_size,
+             args.bbox_patch_sizes, args.resizing_interpolation_method, args.output_naming_scheme,
+             args.output_naming_prefix)

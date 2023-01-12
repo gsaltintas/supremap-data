@@ -12,13 +12,14 @@ import time
 import warnings
 
 
-def rectify(inputs, output_dir):
+def transform_to_wgs84(inputs, output_dir):
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=FutureWarning)
         warnings.simplefilter(action='ignore', category=Image.DecompressionBombWarning)
 
         os.makedirs(output_dir, exist_ok=True)
         geotiffs = []
+        output_paths = []
         
         anonymous_idx = 0
         for input in inputs:
@@ -70,8 +71,8 @@ def rectify(inputs, output_dir):
             # gcs_north_outer to y @ 0, gcs_south_outer to y @ gt.height
 
             gcs_to_pixel_b = np.array([0, 0,
-                                    0, gt.tif_shape[0]-1,
-                                    gt.tif_shape[1]-1, 0])
+                                       0, gt.tif_shape[0]-1,
+                                       gt.tif_shape[1]-1, 0])
             
             gcs_to_pixel_A = np.array([[gcs_west_outer, gcs_north_outer, 1, 0, 0, 0],
                                        [0, 0, 0, gcs_west_outer, gcs_north_outer, 1],
@@ -106,7 +107,6 @@ def rectify(inputs, output_dir):
             # the input directory to fill the provided bbox as much as possible
 
             tmp_dir = tempfile.mkdtemp()
-            os.makedirs(tmp_dir, exist_ok=True)
             result_paths = patchify(inputs, output_dir=tmp_dir, patch_width_px=0, patch_height_px=0, output_format='tiff',
                                     create_tags=True, keep_fractional=True, keep_blanks=True, bboxes=[reproj_bbox])
 
@@ -193,8 +193,11 @@ def rectify(inputs, output_dir):
                         break
 
                 cropped_img.save(output_path, tiffinfo=tiff_meta)
+                output_paths.append(output_path)
             
             shutil.rmtree(tmp_dir)
+    
+        return output_paths
 
 
 if __name__ == '__main__':
@@ -206,4 +209,4 @@ if __name__ == '__main__':
     if args.output_dir is None:
         args.output_dir = f'supremap_wgs84_transformation_{int(time.time())}'
 
-    rectify(args.input_dir, args.output_dir)
+    transform_to_wgs84(args.input_dir, args.output_dir)
