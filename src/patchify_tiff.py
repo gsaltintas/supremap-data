@@ -348,7 +348,7 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                     img.tag_v2 = ImageFileDirectory_v2()
                     with Image.open(first_geotiff_path) as first_geotiff:
                         for to_copy in {1024, 1025, 2016, *range(2048, 2062), *range(3072, 3096), *range(4096, 5000),
-                                        33550, 34735, 34736, 34737}:
+                                        33550, 33922, 34735, 34736, 34737}:
                             if to_copy in first_geotiff.tag_v2:
                                 img.tag_v2[to_copy] = first_geotiff.tag_v2[to_copy]
                     
