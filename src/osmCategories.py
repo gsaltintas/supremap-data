@@ -1,13 +1,15 @@
 FieldTags = {
-    'landuse': ['allotments', 'brownfield', 'cemetery', 'greenhouse_horticulture', 'farmland', 'flowerbew',
-                'forest', 'grass', 'landfill,' 'meadow', 'orchard', 'plant_nursery', 'recreation_ground', 'village_green', 'vineyard'],
+    # 'landuse': ['allotments', 'brownfield', 'cemetery', 'greenhouse_horticulture', 'farmland', 'flowerbed',
+    #             'forest', 'grass', 'landfill', 'meadow', 'orchard', 'plant_nursery', 'recreation_ground', 'village_green', 'vineyard'],
+    'landuse': ['allotments', 'brownfield', 'cemetery', 'farmland',
+                'forest', 'grass', 'landfill', 'recreation_ground', 'village_green',],
 }
 
 WaterTags = {
     'natural': ['water'],
     # including waterways breaks the layering with streets :(
-    # # 'waterway': ['basin', 'canal', 'ditch', 'drain', 'fairway', 'fish_pass', 'lagoon', 'lake', 'lock', 'moat', 'oxbow', 'pond', 'reflecting_pool', 'reservoir', 'river', 'riverbank', 'stream', 'stream_pool', 'tidal_channel'],
-    # 'landuse': ['aquaculture', 'salt_pond']
+    'waterway': ['basin', 'canal', 'ditch', 'drain', 'fairway', 'fish_pass', 'lagoon', 'lake', 'lock', 'moat', 'oxbow', 'pond', 'reflecting_pool', 'reservoir', 'river', 'riverbank', 'stream', 'stream_pool', 'tidal_channel'],
+    'landuse': ['aquaculture', 'salt_pond']
 }
 
 BeachTags = {
