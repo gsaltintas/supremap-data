@@ -87,7 +87,7 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                     if first_crs_code is None:
                         first_crs_code = gt.crs_code
                     elif first_crs_code != gt.crs_code:
-                        raise NotImplementedError('Support for multiple CRS codes has not been implemented yet!')
+                        raise NotImplementedError('Transform TIFFs to one single CRS first before patchifying!')
                     
                     input_geotiffs.append(gt)
                     process_geotiff(gt)

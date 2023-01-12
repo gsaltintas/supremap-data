@@ -104,7 +104,10 @@ def download_zips(url: str, args, start_row:int =0):
 
     # opensearch:itemsPerPage
     # title = response_json['feed']['entry'][0]['link']
-    features = pd.DataFrame(response_json['feed']['entry'])
+    response_entry = response_json['feed']['entry']
+    if isinstance(response_entry, dict):
+        response_entry = [response_entry]
+    features = pd.DataFrame(response_entry)
     # returned columns: Index(['title', 'link', 'id', 'summary', 'ondemand', 'date', 'int', 'double', 'str'],
     if len(features) == 0:
         print('No items found')
