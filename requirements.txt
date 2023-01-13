@@ -17,3 +17,4 @@ shapely
 geocube
 xarray
 geojson
+cairosvg

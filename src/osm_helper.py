@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
-from PIL import Image
+from PIL import Image, ImageColor
 from osmCategories import *
 import shapely
 from pathlib import Path
@@ -16,7 +16,7 @@ import matplotlib as mpl
 mpl.use('Agg')
 
 
-def plot_seg_and_inst_map(bbox, save_dir, filename, resolution=3000, background_color=(255, 255, 255, 255),
+def plot_seg_and_inst_map(bbox, save_dir, filename, resolution=3000, background_color=(255, 255, 255, 255), instance_bg=False,
                           street_widths={
     "footway": 1.5,
     "steps": 1.5,
@@ -41,7 +41,10 @@ def plot_seg_and_inst_map(bbox, save_dir, filename, resolution=3000, background_
         street_widths[key] *= scale
 
     if bbox is None:
-        bbox = [47.368614, 47.377607, 8.53769, 8.55093]
+        # ETH
+        # bbox = [47.368614, 47.377607, 8.53769, 8.55093]
+        # EPFL
+        bbox = [46.506843, 46.515830, 6.55269, 6.56572]
         save_dir = Path("./osm").resolve().absolute()
         filename = "output"
 
@@ -159,7 +162,6 @@ def plot_seg_and_inst_map(bbox, save_dir, filename, resolution=3000, background_
 
     save_dir.mkdir(exist_ok=True, parents=True)
 
-    print(f'saving to {save_dir.joinpath(f"{filename}_TYPE.png")}')
     background.save(save_dir.joinpath(
         f'{filename}_segmentation.png'), "PNG")
 
@@ -168,13 +170,58 @@ def plot_seg_and_inst_map(bbox, save_dir, filename, resolution=3000, background_
     for image in imagesInst:
         background = Image.alpha_composite(background, image)
 
+    if (instance_bg == True):
+        # going through the png and coloring all connected black pixels
+        img = np.array(background)
+        img2 = (img == background_color).all(2)
+        background_color = np.array(background_color, dtype=np.uint8)
+
+        def color_neighbourhood(x, y, newColor):
+            nonlocal img, img2, resolution, background_color
+            goals = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
+            while len(goals) > 0:
+                xn, yn = goals.pop(0)
+                # print(f'{xn}, {yn}')
+                if (xn < 0 or xn >= resolution or yn < 0 or yn >= resolution):
+                    continue
+                if (img2[xn, yn] == True):
+                    goals.extend(
+                        [(xn-1, yn), (xn+1, yn), (xn, yn-1), (xn, yn+1)])
+                    img2[xn, yn] = False
+                    img[xn, yn] = newColor
+
+        for x in range(resolution):
+            y = 0
+            while (y < resolution):
+                # find true values and skip forward to it
+                trues = img2[x].nonzero()[0]
+                if (len(trues) > 0):
+                    y = trues[0]
+                else:
+                    y = resolution
+                    continue
+
+                # if its background colored, paint it
+                if (img2[x, y] == True):
+                    newColor = np.array(ImageColor.getcolor(
+                        f'#{offset:06x}', "RGBA"), dtype=np.uint8)
+                    offset += 2
+                    img[x, y] = newColor
+                    img2[x, y] = False
+                    color_neighbourhood(x, y, newColor)
+
+                y += 1
+        background = Image.fromarray(img)
+
     background.save(save_dir.joinpath(
         f'{filename}_instantation.png'), "PNG")
+
+    print(f'saved to {save_dir.joinpath(f"{filename}_TYPE.png")}')
 
 
 # for running as a file
 def main():
-    plot_seg_and_inst_map(None, None, None)
+    plot_seg_and_inst_map(None, None, None, instance_bg=True)
 
 
 if __name__ == "__main__":
