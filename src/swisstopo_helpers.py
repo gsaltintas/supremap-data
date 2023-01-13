@@ -76,7 +76,6 @@ def get_url(args) -> str:
 def download_tifs(url: str, args):
     """ downloads tifs based on the search specified by the url  into the args.save_dir"""
     response = send_request(url)
-    print(response)
     if response['type'] == 'FeatureCollection':
         features = pd.DataFrame(response['features'])
     elif response['type'] == 'Feature':
@@ -85,7 +84,8 @@ def download_tifs(url: str, args):
     else:
         raise Exception(f'Unkown type: {response["type"]}')
     if len(features) == 0:
-        exit('No items found')
+        print('No items found')
+        return
     features.drop(['collection', 'type', 'stac_version'], axis=1, inplace=True)
     # returned object dict_keys(['id', 'collection', 'type', 'stac_version', 'geometry', 'bbox', 'properties', 'links', 'assets'])
 

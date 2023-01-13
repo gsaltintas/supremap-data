@@ -1,27 +1,27 @@
 import argparse
-import cairosvg
-from geojson import Feature, GeoJSON, Polygon
-from geotiff import GeoTiff
 import io
-from matplotlib.colors import LinearSegmentedColormap, ListedColormap
-import matplotlib.pyplot as plt
-from multiprocessing import Pool, cpu_count
-import numpy as np
 import os
-import osmnx as ox
-from pathlib import Path
-from PIL import Image, ImageColor
-from PIL.TiffImagePlugin import ImageFileDirectory_v2
 import random
-from shapely import Polygon as PolygonShapely
 import shutil
 import time
+from multiprocessing import Pool, cpu_count
+from pathlib import Path
 
+import cairosvg
+import matplotlib.pyplot as plt
+import numpy as np
+import osmnx as ox
+from geojson import Feature, GeoJSON, Polygon
+from geotiff import GeoTiff
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap
+from PIL import Image, ImageColor
+from PIL.TiffImagePlugin import ImageFileDirectory_v2
+from shapely import Polygon as PolygonShapely
 
+import swisstopo_helpers as sw
 from add_sentinel_imgs import add_sentinel_imgs
 from osmCategories import *
 from patchify_tiff import patchify
-import swisstopo_helpers as sw
 from transform_to_wgs84 import transform_to_wgs84
 
 
@@ -32,6 +32,7 @@ class SwisstopoDownloadArguments(object):
     resolution = 0.1
     save_dir = None
     max_rows = 0
+    id = None
 
 
 class AddSentinelImgsArguments(object):

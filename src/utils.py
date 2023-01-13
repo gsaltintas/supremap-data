@@ -1,10 +1,30 @@
-import geotiff
 import json
+from pathlib import Path
+
+import geotiff
 
 
 class RoundingFloat(float):
     # set floating number precision for geojson dumps
     __repr__ = staticmethod(lambda x: format(x, '.10f'))
+
+class Argument:
+    swisstopo = True
+    sentinel = False
+    bbox = [5,46,10,48]
+    date_range =["2022-01-01", "2022-12-05"]
+    save_dir = Path('./out')
+    resolution = 0.1
+    rows = 20
+    max_rows = 200
+    max_cloud_coverage_pct = 20
+    order_by_position =False
+    desc = True
+    processing_level = 'Level 2A'
+    force_metadata_regeneration = False
+    
+    def __init__(self):
+        pass
 
 json.encoder.c_make_encoder = None
 if hasattr(json.encoder, 'FLOAT_REPR'):
@@ -17,7 +37,6 @@ else:
 
 def dummy_func():
     json.encoder
-
 
 def custom_get_int_box(gt_obj, bBox, outer_points=None, add_bump=False):
     # adapted copy of the geotiff.GeoTiff.custom_get_int_box function,
