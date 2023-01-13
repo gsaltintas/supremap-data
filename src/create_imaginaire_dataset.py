@@ -277,8 +277,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                               unaligned_images_tiff_dir=None, aligned_images_tiff_dir=None,
                               aligned_instance_maps_tiff_dir=None, aligned_seg_maps_tiff_dir=None,
                               aligned_low_res_tiff_dir=None, create_bg_instances=True, num_jobs=None,
-                              download_or_transform_images=True, geojson_dir=None):
-    
+                              download_or_transform_images=True, geojson_dir=None, random_seed=1):
     if num_jobs is None:
         num_jobs = max(1, (cpu_count() * 3) // 4)
 
@@ -367,9 +366,9 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     # create instance/seg maps
 
     create_seg_inst_maps_data = [(path, aligned_seg_maps_tiff_dir, aligned_instance_maps_tiff_dir,
-                                    create_bg_instances, street_widths)
-                                    for path in Path(aligned_images_tiff_dir).iterdir()
-                                    if path.name in relevant_tiff_names]
+                                  create_bg_instances, street_widths)
+                                  for path in Path(aligned_images_tiff_dir).iterdir()
+                                  if path.name in relevant_tiff_names]
 
     if num_jobs == 1:
         for data_entry in create_seg_inst_maps_data:
@@ -414,7 +413,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         copy_list.append(copy_dict)
         
     if shuffle:
-        random.shuffle(copy_list)
+        random.Random(random_seed).shuffle(copy_list)
 
     num_samples = len(copy_list)
     num_train_samples = int(train_fraction * num_samples)
@@ -470,6 +469,8 @@ if __name__ == '__main__':
                         type=bool, default=False)
     parser.add_argument('-j', '--num-jobs', help='Number of jobs to use. Omit to use floor(0.75 * core_count).',
                         type=int, default=None)
+    parser.add_argument('-R', '--random-seed', help='Seed to use when creating the train/val splits randomly.',
+                        type=int, default=1)
     parser.add_argument('--seed', type=int, help='Random seed', default=42)
     parser.add_argument('--geojson-dir', help='Path to the geojsons.', type=str, default=None)
         
@@ -508,4 +509,5 @@ if __name__ == '__main__':
                               aligned_seg_maps_tiff_dir=args.aligned_seg_maps_tiff_dir,
                               create_bg_instances=args.create_bg_instances,
                               download_or_transform_images=args.download_or_transform_images,
-                              num_jobs=args.num_jobs, geojson_dir=args.geojson_dir)
+                              num_jobs=args.num_jobs, geojson_dir=args.geojson_dir,
+                              random_seed=args.random_seed)
