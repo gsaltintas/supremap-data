@@ -34,6 +34,11 @@ def process_geotiff_pair(data):
         output_path = os.path.join(output_dir, fn)
         if not os.path.isfile(output_path):
             break
+        else:
+            # don't need to transform
+            gt_test = GeoTiff(output_path)
+            if gt_test.crs_code == 4326:
+                return output_path
     
     if gt.crs_code == 4326:
         return gt.file

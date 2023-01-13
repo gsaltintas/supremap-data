@@ -26,7 +26,6 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
         resizing_interpolation_filter = None
 
     os.makedirs(output_dir, exist_ok=True)
-    input_geotiffs = []
     output_paths = []
     num_channels = -1
 
@@ -60,24 +59,27 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
 
         if topmost_geotiff is None or bbox[0][1] > topmost_geotiff.tif_bBox[0][1]:
             topmost_geotiff = geotiff
+
+        if len(geotiff.tif_shape) != 3:
+            return
         
         if num_channels == -1:
             num_channels = geotiff.tif_shape[-1]
         elif num_channels != geotiff.tif_shape[-1]:
-            raise ValueError('Received TIFF images with different number of channels!')
+            raise ValueError(f'Received TIFF images with different number of channels '\
+                             f'({num_channels} vs. {geotiff.tif_shape[-1]})!')
 
         geotiffs.append(geotiff)
 
     for input in inputs:
         if isinstance(input, GeoTiff):
-            input_geotiffs.append(input)
             process_geotiff(input)
         elif isinstance(input, str):
             gt = None
             path = None
 
             def prelim_process_gt(path, gt):
-                nonlocal first_geotiff_path, first_crs_code, input_geotiffs
+                nonlocal first_geotiff_path, first_crs_code
                 if gt is not None:
                     if first_geotiff_path is None:
                         first_geotiff_path = path
@@ -89,7 +91,6 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                     elif first_crs_code != gt.crs_code:
                         raise NotImplementedError('Transform TIFFs to one single CRS first before patchifying!')
                     
-                    input_geotiffs.append(gt)
                     process_geotiff(gt)
 
             if os.path.isdir(input):
