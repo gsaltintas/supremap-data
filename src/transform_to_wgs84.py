@@ -234,11 +234,13 @@ def transform_to_wgs84(inputs, output_dir, num_jobs=None, alternative_patchify_i
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input-dir', help='Input director(y|ies)', type=str, action='append', default=None)
-    parser.add_argument('-o', '--output-dir', help='Output directory', type=str, default=None)
+    parser.add_argument('-i', '--input-dir', help='Input director(y|ies).', type=str, action='append', default=None)
+    parser.add_argument('-o', '--output-dir', help='Output directory.', type=str, default=None)
+    parser.add_argument('-j', '--num-jobs', help='Number of jobs to use. Omit to use floor(0.75 * core_count).',
+                        type=int, default=None)
     args = parser.parse_args()
 
     if args.output_dir is None:
         args.output_dir = f'supremap_wgs84_transformation_{int(time.time())}'
 
-    transform_to_wgs84(args.input_dir, args.output_dir)
+    transform_to_wgs84(args.input_dir, args.output_dir, args.num_jobs)

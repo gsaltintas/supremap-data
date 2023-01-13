@@ -25,12 +25,13 @@ import swisstopo_helpers as sw
 from transform_to_wgs84 import transform_to_wgs84
 
 
-class SwisstopoDownloadArguments(object):
-  date_range = None
-  bbox = None
-  resolution = 0.1
-  save_dir = None
-  max_rows = 0
+class SwisstopoDownloadArguments(object): 
+    id = None
+    date_range = None
+    bbox = None
+    resolution = 0.1
+    save_dir = None
+    max_rows = 0
 
 
 class AddSentinelImgsArguments(object):
@@ -257,12 +258,13 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                                              'path': 1.5, 'track': 1.5, 'motorway': 6, 'default': 5},
                               unaligned_images_tiff_dir=None, aligned_images_tiff_dir=None,
                               aligned_instance_maps_tiff_dir=None, aligned_seg_maps_tiff_dir=None,
-                              aligned_low_res_tiff_dir=None, create_bg_instances=True, num_jobs=None):
+                              aligned_low_res_tiff_dir=None, create_bg_instances=True, num_jobs=None,
+                              download_or_transform_images=True):
     
     if num_jobs is None:
         num_jobs = max(1, (cpu_count() * 3) // 4)
 
-    for point_idx, point in enumerate(points):
+    for point_idx, point in enumerate(points or []):
         if isinstance(point, str):
             points[point_idx] = eval(point)
     
@@ -301,14 +303,16 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         bbox = ox.utils_geo.bbox_from_point((point[1], point[0]), dist=zoom_level)
         bboxes.append(bbox)
 
-        sw_args = SwisstopoDownloadArguments()
-        sw_args.save_dir = Path(unaligned_images_tiff_dir)
-        sw_args.bbox = [bbox[3], bbox[1], bbox[2], bbox[0]]  # [LON_WEST, LAT_SOUTH, LON_EAST, LAT_NORTH]
-        url = sw.get_url(sw_args)
-        sw.download_tifs(url, sw_args)
+        if download_or_transform_images:
+            sw_args = SwisstopoDownloadArguments()
+            sw_args.save_dir = Path(unaligned_images_tiff_dir)
+            sw_args.bbox = [bbox[3], bbox[1], bbox[2], bbox[0]]  # [LON_WEST, LAT_SOUTH, LON_EAST, LAT_NORTH]
+            url = sw.get_url(sw_args)
+            sw.download_tifs(url, sw_args)
 
-    # transform to WGS-84
-    transform_to_wgs84(inputs=[unaligned_images_tiff_dir], output_dir=aligned_images_tiff_dir)
+    if download_or_transform_images:
+        # transform to WGS-84
+        transform_to_wgs84(inputs=[unaligned_images_tiff_dir], output_dir=aligned_images_tiff_dir)
     
     # add sentinel data
 
@@ -386,9 +390,9 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output-dir', help='Directory to create dataset in.', type=str)
     parser.add_argument('-z', '--zoom-level', help='Zoom level to use.', type=int)
     parser.add_argument('-p', '--point', help='Bounding box, in WGS84 coords and format (LON, LAT). '\
-                        'Possible to specify multiple.', type=str, action='append')
+                        'Possible to specify multiple.', type=str, action='append', default=[])
     parser.add_argument('-c', '--csv', help='Path to CSV file with "x_center" and "y_center" columns. '\
-                        'Possible to specify multiple.', type=str, action='append')
+                        'Possible to specify multiple.', type=str, action='append', default=[])
     parser.add_argument('-t', '--train-fraction', help='Fraction of points to use for training from totality of all '\
                                                        'training + validation samples', default=0.8, type=float)
     parser.add_argument('-s', '--shuffle', help='Whether to shuffle the points when creating the splits.',
@@ -403,24 +407,23 @@ if __name__ == '__main__':
                         'the background patches.', type=bool, default=True)
     parser.add_argument('--unaligned-images-tiff-dir',
                         help='Directory into which to download high-res images. Omit to create a new one.',
-                        #type=str, default='/data/swisstopo/')
-                        type=str, default=None)
+                        type=str, default='/data/swisstopo_custom_2056/')
     parser.add_argument('--aligned-images-tiff-dir',
                         help='Directory into which to store WGS84-aligned high-res images. Omit to create a new one.',
-                        #type=str, default='/data/swisstopo_wgs84/')
-                        type=str, default=None)
+                        type=str, default='/data/swisstopo_custom_wgs84/')
     parser.add_argument('--aligned-low-res-tiff-dir',
                         help='Directory into which to store WGS84-aligned Sentinel images. Omit to create a new one.',
-                        #type=str, default='/data/sentinel_wgs84/')
-                        type=str, default=None)
+                        type=str, default='/data/sentinel_wgs84/')
     parser.add_argument('--aligned-instance-maps-tiff-dir',
                         help='Directory into which to store WGS84-aligned instance maps. Omit to create a new one.',
-                        #type=str, default='/data/instance_maps_wgs84/')
-                        type=str, default=None)
+                        type=str, default='/data/instance_maps_wgs84/')
     parser.add_argument('--aligned-seg-maps-tiff-dir',
                         help='Directory into which to store WGS84-aligned segmentation maps. Omit to create a new one.',
-                        #type=str, default='/data/seg_maps_wgs84/')
-                        type=str, default=None)
+                        type=str, default='/data/seg_maps_wgs84/')
+    parser.add_argument('--download-or-transform-images', help='Whether to download/transform any Swisstopo tiles.',
+                        type=bool, default=False)
+    parser.add_argument('-j', '--num-jobs', help='Number of jobs to use. Omit to use floor(0.75 * core_count).',
+                        type=int, default=None)
         
     args = parser.parse_args()
     if args.output_dir is None:
@@ -453,4 +456,6 @@ if __name__ == '__main__':
                               aligned_low_res_tiff_dir=args.aligned_low_res_tiff_dir,
                               aligned_instance_maps_tiff_dir=args.aligned_instance_maps_tiff_dir,
                               aligned_seg_maps_tiff_dir=args.aligned_seg_maps_tiff_dir,
-                              create_bg_instances=args.create_bg_instances)
+                              create_bg_instances=args.create_bg_instances,
+                              download_or_transform_images=args.download_or_transform_images,
+                              num_jobs=args.num_jobs)
