@@ -1,7 +1,12 @@
+
 import argparse
+import json
+import re
+from pathlib import Path
+
+from geojson import Feature, GeoJSON, Polygon
 from PIL import Image
 from PIL.TiffImagePlugin import ImageFileDirectory_v2
-
 
 ModelPixelScaleTag = 33550
 ModelTiepointTag = 33922
@@ -78,12 +83,24 @@ def create_geotiff_metadata(pixel_x_y, pixel_coords_x_y, pixel_scale_x_y, crs_co
 
     return ifd
 
+def read_process_geojson(input_file: str)-> str:
+    input_file=  Path(input_file)
+    image_id = re.search(
+        "swissimage-dop10_([0-9]+)_[0-9]+-[0-9]+", input_file.name)[0]
+    json_file_name = image_id + ".geojson"
+    jsonFile = open(input_file.parent.joinpath(json_file_name), "r")
+    jsonContent = jsonFile.read()
+    jsonFile.close()
+    geo = Feature(**json.loads(jsonContent))
+    geoCoords = geo["geometry"]["coordinates"][0]
+    
 
 if __name__ == '__main__':
     # For testing purposes:
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--input-file', '-i', help='File to tag.', type=str)
+    parser.add_argument('--geotiff', action='store_true')
     parser.add_argument('--pixel-px-x', '-x', help='X position of reference pixel.', type=float, default=0.0)
     parser.add_argument('--pixel-px-y', '-y', help='Y position of reference pixel.', type=float, default=0.0)
     parser.add_argument('--pixel-scale-x', '-v', help='Pixel scale in X direction.', type=float)
@@ -101,6 +118,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     with Image.open(args.input_file) as img:
+        if args.geotiff:
+            read_process_geojson(args.input_file)
         info = create_geotiff_metadata(pixel_x_y=(args.pixel_px_x, args.pixel_px_y),
                                        pixel_coords_x_y=(args.pixel_coord_x, args.pixel_coord_y),
                                        pixel_scale_x_y=(args.pixel_scale_x, args.pixel_scale_y), crs_code=args.crs_code,

@@ -1,7 +1,8 @@
 import argparse
-from geotiff import GeoTiff
-from pathlib import Path
 import time
+from pathlib import Path
+
+from geotiff import GeoTiff
 from tqdm import tqdm
 
 
@@ -13,7 +14,7 @@ def gen_csv_from_dir(input_dir, output_path=None):
     output_lines = ['file_path,x_center,y_center']
     for entry in tqdm(Path(input_dir).iterdir()):
         enl = entry.name.lower()
-        if not enl.endswith('.tif') and not enl.endswith('.tiff'):
+        if not enl.endswith('.tif') and not enl.endswith('.tiff') or enl.startswith('_'):
             continue
         
         gt = GeoTiff(str(entry))
@@ -24,7 +25,6 @@ def gen_csv_from_dir(input_dir, output_path=None):
     
     with open(output_path, 'w') as f:
         f.write('\n'.join(output_lines))
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

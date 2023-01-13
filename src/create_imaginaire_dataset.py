@@ -1,27 +1,27 @@
 import argparse
-import cairosvg
-from geojson import Feature, GeoJSON, Polygon
-from geotiff import GeoTiff
 import io
-from matplotlib.colors import LinearSegmentedColormap, ListedColormap
-import matplotlib.pyplot as plt
-from multiprocessing import Pool, cpu_count
-import numpy as np
 import os
-import osmnx as ox
-from pathlib import Path
-from PIL import Image, ImageColor
-from PIL.TiffImagePlugin import ImageFileDirectory_v2
 import random
-from shapely import Polygon as PolygonShapely
 import shutil
 import time
+from multiprocessing import Pool, cpu_count
+from pathlib import Path
 
+import cairosvg
+import matplotlib.pyplot as plt
+import numpy as np
+import osmnx as ox
+from geojson import Feature, GeoJSON, Polygon
+from geotiff import GeoTiff
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap
+from PIL import Image, ImageColor
+from PIL.TiffImagePlugin import ImageFileDirectory_v2
+from shapely import Polygon as PolygonShapely
 
+import swisstopo_helpers as sw
 from add_sentinel_imgs import add_sentinel_imgs
 from osmCategories import *
 from patchify_tiff import patchify
-import swisstopo_helpers as sw
 from transform_to_wgs84 import transform_to_wgs84
 
 
@@ -32,6 +32,7 @@ class SwisstopoDownloadArguments(object):
     resolution = 0.1
     save_dir = None
     max_rows = 0
+    id = None
 
 
 class AddSentinelImgsArguments(object):
@@ -253,7 +254,7 @@ def create_seg_inst_maps(data):
 
 def patchify_mp(data): 
     entry_str, subtype_name, subtype_input_dir, subtype_output_dir, subtype_initial_image_size,\
-    sqrt_num_patches_per_point, patch_size = data
+    sqrt_num_patches_per_point, patch_size, geojson_dir = data
 
     patchify([entry_str], output_dir=subtype_output_dir,
              patch_width_px=subtype_initial_image_size // sqrt_num_patches_per_point,
@@ -265,7 +266,8 @@ def patchify_mp(data):
              output_naming_scheme='patch_idx',
              resizing_interpolation_method='nearest_neighbor' if '_map' in subtype_name else 'bicubic',
              output_naming_prefix=os.path.splitext(os.path.basename(entry_str))[0].replace('_lowres', ''),
-             regular_patch_size=(patch_size, patch_size))
+             regular_patch_size=(patch_size, patch_size),
+             geojson_dir=geojson_dir)
 
 
 def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_per_point, patch_size,
@@ -275,7 +277,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                               unaligned_images_tiff_dir=None, aligned_images_tiff_dir=None,
                               aligned_instance_maps_tiff_dir=None, aligned_seg_maps_tiff_dir=None,
                               aligned_low_res_tiff_dir=None, create_bg_instances=True, num_jobs=None,
-                              download_or_transform_images=True):
+                              download_or_transform_images=True, geojson_dir=None):
     
     if num_jobs is None:
         num_jobs = max(1, (cpu_count() * 3) // 4)
@@ -286,7 +288,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     
     join = os.path.join
     for split in ['train', 'val']:
-        for dir in ['blurred', 'images', 'instance_maps', 'seg_maps']:
+        for dir in ['blurred', 'images', 'instance_maps', 'seg_maps', 'geojsons']:
             os.makedirs(join(output_dir, split, dir), exist_ok=True)
 
     if unaligned_images_tiff_dir in {None, ''}:
@@ -303,6 +305,10 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
 
     if aligned_seg_maps_tiff_dir in {None, ''}:
         aligned_seg_maps_tiff_dir = join(output_dir, 'creation', 'whole', 'wgs84_seg_maps')
+        
+    if geojson_dir in {None, ''}:
+        geojson_dir = join(output_dir, 'creation', 'whole', 'wgs_84_geojson')
+        
     
     aligned_images_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_images')
     aligned_low_res_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_low_res')
@@ -310,7 +316,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     aligned_seg_maps_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_seg_maps')
 
     for dir_path in {unaligned_images_tiff_dir, aligned_images_tiff_dir, aligned_low_res_tiff_dir,
-                     aligned_instance_maps_tiff_dir, aligned_seg_maps_tiff_dir}:
+                     aligned_instance_maps_tiff_dir, aligned_seg_maps_tiff_dir, geojson_dir}:
         os.makedirs(dir_path, exist_ok=True)
 
     bboxes = []
@@ -380,8 +386,8 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                           ('seg_maps', aligned_seg_maps_tiff_dir, aligned_seg_maps_patch_dir, 10000)]
 
     # "patchify_mp_data" expects: entry, subtype_name, subtype_input_dir, subtype_output_dir,
-    # subtype_initial_image_size, sqrt_num_patches_per_point, patch_size
-    patchify_mp_data = [(str(entry), sds[0], sds[1], sds[2], sds[3], sqrt_num_patches_per_point, patch_size)
+    # subtype_initial_image_size, sqrt_num_patches_per_point, patch_size, geojson_dir
+    patchify_mp_data = [(str(entry), sds[0], sds[1], sds[2], sds[3], sqrt_num_patches_per_point, patch_size, geojson_dir)
                          for sds in subtype_dirs_sizes
                          for entry in Path(sds[1]).iterdir() if entry.name.replace('_lowres', '') in relevant_tiff_names]
 
@@ -393,7 +399,6 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
             pool.map(patchify_mp, patchify_mp_data)
     
     copy_list = []
-
     for image_path in Path(aligned_images_patch_dir).iterdir():
         if not image_path.name.endswith('.png'):
             continue
@@ -401,7 +406,8 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         copy_dict = {'blurred': join(aligned_low_res_patch_dir, image_path.name),
                      'images': str(image_path),
                      'instance_maps': join(aligned_instance_maps_patch_dir, image_path.name),
-                     'seg_maps': join(aligned_seg_maps_patch_dir, image_path.name)}
+                     'seg_maps': join(aligned_seg_maps_patch_dir, image_path.name),
+                     'geojsons': join(geojson_dir, image_path.with_suffix('.geojson').name)}
         if any(map(lambda p: not os.path.isfile(p), copy_dict.values())):
             continue
         
@@ -417,8 +423,8 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         is_train = sample_idx < num_train_samples
         split_dir = 'train' if is_train else 'val'
         for subtype, path in sample_copy_data.items():
-            shutil.copy(path, join(output_dir, split_dir, subtype, f'{sample_idx:08}.png'))
-
+            shutil.copy(path, join(output_dir, split_dir, subtype, f'{sample_idx:08}{Path(path).suffix}'))
+        
     try:
         shutil.rmtree(join(output_dir, 'creation'))
     except:
@@ -464,8 +470,12 @@ if __name__ == '__main__':
                         type=bool, default=False)
     parser.add_argument('-j', '--num-jobs', help='Number of jobs to use. Omit to use floor(0.75 * core_count).',
                         type=int, default=None)
+    parser.add_argument('--seed', type=int, help='Random seed', default=42)
+    parser.add_argument('--geojson-dir', help='Path to the geojsons.', type=str, default=None)
         
     args = parser.parse_args()
+    random.seed(args.seed)
+    
     if args.output_dir is None:
         args.output_dir = f'supremap_imaginaire_dataset_{int(time.time())}'
 
@@ -498,4 +508,4 @@ if __name__ == '__main__':
                               aligned_seg_maps_tiff_dir=args.aligned_seg_maps_tiff_dir,
                               create_bg_instances=args.create_bg_instances,
                               download_or_transform_images=args.download_or_transform_images,
-                              num_jobs=args.num_jobs)
+                              num_jobs=args.num_jobs, geojson_dir=args.geojson_dir)
