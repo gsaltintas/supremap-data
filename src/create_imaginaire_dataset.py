@@ -39,7 +39,6 @@ class AddSentinelImgsArguments(object):
     aligned_save_dir = None
 
 
-
 def create_seg_inst_maps(data):
     entry_path_str, aligned_seg_maps_tiff_dir, aligned_instance_maps_tiff_dir, create_bg_instances, street_widths = data
     entry = Path(entry_path_str)
@@ -252,6 +251,23 @@ def create_seg_inst_maps(data):
     background.save(instance_map_output_path, tiffinfo=background.tag_v2)
 
 
+def patchify_mp(data): 
+    entry_str, subtype_name, subtype_input_dir, subtype_output_dir, subtype_initial_image_size,\
+    sqrt_num_patches_per_point, patch_size = data
+
+    patchify([entry_str], output_dir=subtype_output_dir,
+             patch_width_px=subtype_initial_image_size // sqrt_num_patches_per_point,
+             patch_height_px=subtype_initial_image_size // sqrt_num_patches_per_point,
+             output_format='png',
+             create_tags=False,
+             keep_fractional=True,
+             keep_blanks=False,
+             output_naming_scheme='patch_idx',
+             resizing_interpolation_method='nearest_neighbor' if '_map' in subtype_name else 'bicubic',
+             output_naming_prefix=os.path.splitext(os.path.basename(entry_str))[0].replace('_lowres', ''),
+             regular_patch_size=(patch_size, patch_size))
+
+
 def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_per_point, patch_size,
                               train_fraction=0.8, shuffle=True,
                               street_widths={'footway': 1.5, 'steps': 1.5, 'pedestrian': 1.5, 'service': 1.5,
@@ -314,6 +330,27 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         # transform to WGS-84
         transform_to_wgs84(inputs=[unaligned_images_tiff_dir], output_dir=aligned_images_tiff_dir)
     
+    # determine relevant TIFFs
+
+    relevant_tiff_names = []
+    for entry in Path(aligned_images_tiff_dir).iterdir():
+        enl = entry.name.lower()
+        if not enl.endswith('.tif') and not enl.endswith('.tiff'):
+            continue
+        
+        gt = GeoTiff(str(entry))
+        tb = gt.tif_bBox
+        relevant = False
+        for bbox in bboxes:
+            if any([tb[0][0] <= bbox[3] < tb[1][0], tb[0][0] < bbox[2] <= tb[1][0],
+                    tb[1][1] < bbox[0] <= tb[0][1], tb[1][1] <= bbox[1] < tb[0][1],
+                    bbox[3] <= tb[0][0] < bbox[2], bbox[3] < tb[1][0] <= bbox[2],
+                    bbox[1] < tb[0][1] <= bbox[0], bbox[1] <= tb[1][1] < bbox[0]]):
+                relevant = True
+                break
+        if relevant:
+            relevant_tiff_names.append(entry.name)
+
     # add sentinel data
 
     sentinel_args = AddSentinelImgsArguments()
@@ -321,10 +358,13 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     sentinel_args.aligned_save_dir = aligned_low_res_tiff_dir
     add_sentinel_imgs(sentinel_args)
 
+    # create instance/seg maps
+
     create_seg_inst_maps_data = [(path, aligned_seg_maps_tiff_dir, aligned_instance_maps_tiff_dir,
-                                  create_bg_instances, street_widths)
-                                  for path in Path(aligned_images_tiff_dir).iterdir()]
-    
+                                    create_bg_instances, street_widths)
+                                    for path in Path(aligned_images_tiff_dir).iterdir()
+                                    if path.name in relevant_tiff_names]
+
     if num_jobs == 1:
         for data_entry in create_seg_inst_maps_data:
             create_seg_inst_maps(data_entry)
@@ -334,23 +374,23 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
 
     # patchify the resulting directories
 
-    subtype_dirs_sizes = [(aligned_images_tiff_dir, aligned_images_patch_dir, 10000),
-                          (aligned_low_res_tiff_dir, aligned_low_res_patch_dir, 10000),
-                          (aligned_instance_maps_tiff_dir, aligned_instance_maps_patch_dir, 10000),
-                          (aligned_seg_maps_tiff_dir, aligned_seg_maps_patch_dir, 10000)]
+    subtype_dirs_sizes = [('images', aligned_images_tiff_dir, aligned_images_patch_dir, 10000),
+                          ('low_res', aligned_low_res_tiff_dir, aligned_low_res_patch_dir, 10000),
+                          ('instance_maps', aligned_instance_maps_tiff_dir, aligned_instance_maps_patch_dir, 10000),
+                          ('seg_maps', aligned_seg_maps_tiff_dir, aligned_seg_maps_patch_dir, 10000)]
 
-    for subtype_input_dir, subtype_output_dir, subtype_initial_image_size in subtype_dirs_sizes:
-        for entry in Path(subtype_input_dir).iterdir():
-            patchify([str(entry)], output_dir=subtype_output_dir,
-                     patch_width_px=subtype_initial_image_size // sqrt_num_patches_per_point,
-                     patch_height_px=subtype_initial_image_size // sqrt_num_patches_per_point,
-                     output_format='png',
-                     create_tags=False,
-                     keep_fractional=True,
-                     keep_blanks=False,
-                     output_naming_scheme='patch_idx',
-                     output_naming_prefix=os.path.splitext(entry.name)[0].replace('_lowres', ''),
-                     regular_patch_size=(patch_size, patch_size))
+    # "patchify_mp_data" expects: entry, subtype_name, subtype_input_dir, subtype_output_dir,
+    # subtype_initial_image_size, sqrt_num_patches_per_point, patch_size
+    patchify_mp_data = [(str(entry), sds[0], sds[1], sds[2], sds[3], sqrt_num_patches_per_point, patch_size)
+                         for sds in subtype_dirs_sizes
+                         for entry in Path(sds[1]).iterdir() if entry.name.replace('_lowres', '') in relevant_tiff_names]
+
+    if num_jobs == 1:
+        for data in patchify_mp_data:
+            patchify_mp(data)
+    else:
+        with Pool(processes=num_jobs) as pool:
+            pool.map(patchify_mp, patchify_mp_data)
     
     copy_list = []
 
