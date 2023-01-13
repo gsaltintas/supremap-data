@@ -260,7 +260,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                               unaligned_images_tiff_dir=None, aligned_images_tiff_dir=None,
                               aligned_instance_maps_tiff_dir=None, aligned_seg_maps_tiff_dir=None,
                               aligned_low_res_tiff_dir=None, create_bg_instances=True, num_jobs=None,
-                              download_or_transform_images=True):
+                              download_or_transform_images=True, geojson_dir=None):
     
     if num_jobs is None:
         num_jobs = max(1, (cpu_count() * 3) // 4)
@@ -271,7 +271,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     
     join = os.path.join
     for split in ['train', 'val']:
-        for dir in ['blurred', 'images', 'instance_maps', 'seg_maps']:
+        for dir in ['blurred', 'images', 'instance_maps', 'seg_maps', 'geojsons']:
             os.makedirs(join(output_dir, split, dir), exist_ok=True)
 
     if unaligned_images_tiff_dir in {None, ''}:
@@ -288,6 +288,10 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
 
     if aligned_seg_maps_tiff_dir in {None, ''}:
         aligned_seg_maps_tiff_dir = join(output_dir, 'creation', 'whole', 'wgs84_seg_maps')
+        
+    if geojson_dir in {None, ''}:
+        geojson_dir = join(output_dir, 'creation', 'whole', 'wgs_84_geojson')
+        
     
     aligned_images_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_images')
     aligned_low_res_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_low_res')
@@ -295,7 +299,7 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     aligned_seg_maps_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_seg_maps')
 
     for dir_path in {unaligned_images_tiff_dir, aligned_images_tiff_dir, aligned_low_res_tiff_dir,
-                     aligned_instance_maps_tiff_dir, aligned_seg_maps_tiff_dir}:
+                     aligned_instance_maps_tiff_dir, aligned_seg_maps_tiff_dir, geojson_dir}:
         os.makedirs(dir_path, exist_ok=True)
 
     bboxes = []
@@ -339,9 +343,11 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                           (aligned_low_res_tiff_dir, aligned_low_res_patch_dir, 10000),
                           (aligned_instance_maps_tiff_dir, aligned_instance_maps_patch_dir, 10000),
                           (aligned_seg_maps_tiff_dir, aligned_seg_maps_patch_dir, 10000)]
-
+    
     for subtype_input_dir, subtype_output_dir, subtype_initial_image_size in subtype_dirs_sizes:
         for entry in Path(subtype_input_dir).iterdir():
+            if not entry.suffix in ['.tif', '.tiff']:
+                continue
             patchify([str(entry)], output_dir=subtype_output_dir,
                      patch_width_px=subtype_initial_image_size // sqrt_num_patches_per_point,
                      patch_height_px=subtype_initial_image_size // sqrt_num_patches_per_point,
@@ -351,18 +357,21 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
                      keep_blanks=False,
                      output_naming_scheme='patch_idx',
                      output_naming_prefix=os.path.splitext(entry.name)[0].replace('_lowres', ''),
-                     regular_patch_size=(patch_size, patch_size))
+                     regular_patch_size=(patch_size, patch_size),
+                     geojson_dir=geojson_dir)
     
     copy_list = []
-
     for image_path in Path(aligned_images_patch_dir).iterdir():
         if not image_path.name.endswith('.png'):
             continue
         
-        copy_dict = {'blurred': join(aligned_low_res_patch_dir, image_path.name),
+        copy_dict = {
+                    'blurred': join(aligned_low_res_patch_dir, image_path.name),
                      'images': str(image_path),
                      'instance_maps': join(aligned_instance_maps_patch_dir, image_path.name),
-                     'seg_maps': join(aligned_seg_maps_patch_dir, image_path.name)}
+                     'seg_maps': join(aligned_seg_maps_patch_dir, image_path.name),
+                     'geojsons': join(geojson_dir, image_path.with_suffix('.geojson').name)
+                     }
         if any(map(lambda p: not os.path.isfile(p), copy_dict.values())):
             continue
         
@@ -378,8 +387,8 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         is_train = sample_idx < num_train_samples
         split_dir = 'train' if is_train else 'val'
         for subtype, path in sample_copy_data.items():
-            shutil.copy(path, join(output_dir, split_dir, subtype, f'{sample_idx:08}.png'))
-
+            shutil.copy(path, join(output_dir, split_dir, subtype, f'{sample_idx:08}{Path(path).suffix}'))
+        
     try:
         shutil.rmtree(join(output_dir, 'creation'))
     except:
@@ -425,8 +434,12 @@ if __name__ == '__main__':
                         type=bool, default=False)
     parser.add_argument('-j', '--num-jobs', help='Number of jobs to use. Omit to use floor(0.75 * core_count).',
                         type=int, default=None)
+    parser.add_argument('--seed', type=int, help='Random seed', default=42)
+    parser.add_argument('--geojson-dir', help='Path to the geojsons.', type=str, default=None)
         
     args = parser.parse_args()
+    random.seed(args.seed)
+    
     if args.output_dir is None:
         args.output_dir = f'supremap_imaginaire_dataset_{int(time.time())}'
 
@@ -459,4 +472,4 @@ if __name__ == '__main__':
                               aligned_seg_maps_tiff_dir=args.aligned_seg_maps_tiff_dir,
                               create_bg_instances=args.create_bg_instances,
                               download_or_transform_images=args.download_or_transform_images,
-                              num_jobs=args.num_jobs)
+                              num_jobs=args.num_jobs, geojson_dir=args.geojson_dir)

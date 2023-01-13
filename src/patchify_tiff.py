@@ -1,20 +1,25 @@
 import argparse
-from geotiff import GeoTiff
 import itertools
-import numpy as np
+import json
 import os
+import time
+from pathlib import Path
+
+import numpy as np
+from geojson import Feature
+from geotiff import GeoTiff
 from PIL import Image
 from PIL.TiffImagePlugin import ImageFileDirectory_v2
+from shapely import MultiPoint
 from sortedcontainers import SortedDict, SortedList
-import time
 
-from utils import custom_get_int_box
+from utils import custom_get_int_box, dummy_func
 
 
 def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format, create_tags, keep_fractional,
              keep_blanks, bboxes=None, regular_patch_size=None, bbox_patch_sizes=None,
              resizing_interpolation_method='bicubic', output_naming_scheme='patch_idx', output_naming_prefix='',
-             add_bump=False):
+             add_bump=False, geojson_dir=None):
     # "inputs" can be list of dirs, or GeoTiffs
     # should return list of GeoTiffs
 
@@ -365,6 +370,16 @@ def patchify(inputs, output_dir, patch_width_px, patch_height_px, output_format,
                     img.save(output_path, tiffinfo=img.tag_v2)
                 else:
                     img.save(output_path)
+                
+                # generate geojson containing information
+                if geojson_dir is not None:
+                    id_ = os.path.split(output_path)[-1]
+                    geo = Feature(id = id_, geometry = MultiPoint(full_coord_box))
+                    geo_local_name = Path(geojson_dir).joinpath(id_).with_suffix('.geojson')
+                    jsonFile = open(geo_local_name, "w")
+                    
+                    json.dump(geo, jsonFile, indent=4)
+                    jsonFile.close()
             output_paths.append(output_path)
     
     return output_paths
