@@ -183,9 +183,9 @@ def postprocess_sentinel_data(args, filter_list=None):
 
 
 def add_sentinel_imgs(args):
-    transform_to_wgs84(inputs=[args.input_dir], output_dir=args.input_dir + '_wgs84')
+    transformed_file_paths = transform_to_wgs84(inputs=[args.input_dir], output_dir=args.input_dir + '_wgs84')
 
-    for entry in Path(args.input_dir + '_wgs84').iterdir():
+    for entry in map(Path, transformed_file_paths):
         lower_name = entry.name.lower()
         if ((lower_name.endswith('.tif') or lower_name.endswith('.tiff'))
              and all(s not in entry.name for s in ['_segmentation', '_lowres'])):
@@ -205,6 +205,7 @@ def add_sentinel_imgs(args):
             
             print(f'{coord_list=}')
             print(f'{input_bbox=}')
+            sentinel_args = SentinelArguments()
             sentinel_args.bbox = input_bbox
             url = sentinel.get_url(sentinel_args)
             downloaded = sentinel.download_zips(url, sentinel_args)
