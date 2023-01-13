@@ -198,6 +198,9 @@ def add_sentinel_imgs(args):
                 print(f'Found CRS {gt.crs_code} (not WGS-84 / 4236); skipping')
                 continue
             
+            if os.path.isfile(os.path.join(args.aligned_save_dir, os.path.splitext(entry.name)[0] + '_lowres.tiff')):
+              continue
+
             coord_list = gt.tif_bBox_wgs_84
             
             # format: [LON_WEST, LAT_SOUTH, LON_EAST, LAT_NORTH]
@@ -213,7 +216,7 @@ def add_sentinel_imgs(args):
             relevant_geotiff_paths = postprocess_sentinel_data(sentinel_args, list(map(os.path.basename, downloaded)))
 
             if len(relevant_geotiff_paths) == 0:
-              return
+              continue
 
             first_gt = GeoTiff(relevant_geotiff_paths[0])
 
