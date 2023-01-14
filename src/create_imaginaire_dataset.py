@@ -366,9 +366,9 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     # create instance/seg maps
 
     create_seg_inst_maps_data = [(path, aligned_seg_maps_tiff_dir, aligned_instance_maps_tiff_dir,
-                                  create_bg_instances, street_widths)
-                                  for path in Path(aligned_images_tiff_dir).iterdir()
-                                  if path.name in relevant_tiff_names]
+                                create_bg_instances, street_widths)
+                                for path in Path(aligned_images_tiff_dir).iterdir()
+                                if path.name in relevant_tiff_names]
 
     if num_jobs == 1:
         for data_entry in create_seg_inst_maps_data:
@@ -423,7 +423,45 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         split_dir = 'train' if is_train else 'val'
         for subtype, path in sample_copy_data.items():
             shutil.copy(path, join(output_dir, split_dir, subtype, f'{sample_idx:08}{Path(path).suffix}'))
-        
+    
+    for split_dir in {'train', 'val'}:
+        for subtype in {'instance_maps', 'seg_maps'}:
+            shutil.copytree(join(output_dir, split_dir, subtype), join(output_dir, split_dir, subtype + '_visual'))
+
+    # turn segmentation & instance maps into 8-bit PNGs
+    for sample_idx, sample_copy_data in enumerate(copy_list):
+        is_train = sample_idx < num_train_samples
+        split_dir = 'train' if is_train else 'val'
+        for subtype, path in sample_copy_data.items():
+            if subtype not in {'instance_maps', 'seg_maps'}:
+                continue
+
+            path = join(output_dir, split_dir, subtype, f'{sample_idx:08}{Path(path).suffix}')
+            if not os.path.isfile(path):
+                continue
+
+            with Image.open(path) as img:
+                img_array = np.array(img)
+                new_array = np.zeros(img_array.shape[:2], dtype=np.uint8)
+                r, g, b = img_array[:, :, 0], img_array[:, :, 1], img_array[:, :, 2]
+
+                if subtype == 'seg_maps':
+                    new_array[np.logical_and(np.logical_and(r == 255, g == 255), b == 255)] = 0  # background: #FFFFFF
+                    new_array[np.logical_and(np.logical_and(r == 0, g == 0), b == 0)] = 1  # building: #000000
+                    new_array[np.logical_and(np.logical_and(r == 255, g == 0), b == 0)] = 2  # road: #FF0000
+                    new_array[np.logical_and(np.logical_and(r == 0, g == 128), b == 0)] = 3  # green: #008000
+                    new_array[np.logical_and(np.logical_and(r == 0, g == 0), b == 255)] = 4  # water: #0000FF
+                    new_array[np.logical_and(np.logical_and(r == 165, g == 42), b == 42)] = 5  # beach: #0000FF
+                elif subtype == 'instance_maps':
+                    color_ints = 256 * 256 * r + 256 * g + b
+                    unique = np.unique(color_ints)
+                    for unique_idx, unique_val in enumerate(unique):
+                        if unique_val > 0:
+                            new_array[color_ints == unique_val] = min(255, unique_idx)
+
+                with Image.fromarray(new_array, mode='L') as new_img:
+                    new_img.save(path)
+
     try:
         shutil.rmtree(join(output_dir, 'creation'))
     except:
@@ -445,8 +483,8 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--sqrt-num-patches-per-point',
                         help='Square root n of number of patches to generate per point. Final number of patches will '\
                              'be <= p * n^2, where n is this parameter and p is the number of points.',
-                        default=3, type=int)
-    parser.add_argument('-S', '--patch-size', help='Final patch side size, in pixels.', type=int, default=768)
+                        default=10, type=int)
+    parser.add_argument('-S', '--patch-size', help='Final patch side size, in pixels.', type=int, default=256)
     parser.add_argument('--create-bg-instances', help='Whether to generate separate instances for each background patch.'\
                         ' Doing so helps style encoders provide information to the generator about the appearance of '\
                         'the background patches.', type=bool, default=True)
