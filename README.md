@@ -1,5 +1,11 @@
 # Supremap Data 
-This repository has the functinality to 
+Table of Contents
+- [Data Sources](#data-sources)
+- [Full Dataset Creation](#full-dataset-creation)
+- [Dataset](#dataset)
+- [Requirements](#requirements)
+
+This repository has the functionality to 
 - Query and download data from [Sentinel](#copernicus-api-and-sentinel) provided by Copernicus API and [Swisstopo](#swisstopo) provided by Swiss Federal Office of Topology.
 - Query Open Street Map (OSM) to fetch map data.
 - Plot and create segmentation and instance maps of geotagged tifs using OSM API.
