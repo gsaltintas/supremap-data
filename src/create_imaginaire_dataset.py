@@ -315,7 +315,9 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     aligned_seg_maps_patch_dir = join(output_dir, 'creation', 'patchified', 'wgs84_seg_maps')
 
     for dir_path in {unaligned_images_tiff_dir, aligned_images_tiff_dir, aligned_low_res_tiff_dir,
-                     aligned_instance_maps_tiff_dir, aligned_seg_maps_tiff_dir, geojson_dir}:
+                     aligned_instance_maps_tiff_dir, aligned_seg_maps_tiff_dir,
+                     aligned_images_patch_dir, aligned_low_res_patch_dir, aligned_instance_maps_patch_dir,
+                     aligned_seg_maps_patch_dir, geojson_dir}:
         os.makedirs(dir_path, exist_ok=True)
 
     bboxes = []
@@ -348,8 +350,8 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
         relevant = False
         for bbox in bboxes:
             if any([tb[0][0] <= bbox[3] < tb[1][0], tb[0][0] < bbox[2] <= tb[1][0],
-                    tb[1][1] < bbox[0] <= tb[0][1], tb[1][1] <= bbox[1] < tb[0][1],
                     bbox[3] <= tb[0][0] < bbox[2], bbox[3] < tb[1][0] <= bbox[2],
+                    tb[1][1] < bbox[0] <= tb[0][1], tb[1][1] <= bbox[1] < tb[0][1],
                     bbox[1] < tb[0][1] <= bbox[0], bbox[1] <= tb[1][1] < bbox[0]]):
                 relevant = True
                 break
@@ -467,11 +469,16 @@ def create_imaginaire_dataset(output_dir, points, zoom_level, sqrt_num_patches_p
     except:
         pass
 
+    if next(Path(join(output_dir, 'val', 'images')).iterdir(), None) is None:
+        raise RuntimeError('There was a problem creating the dataset. Most likely, the Copernicus API does not have'\
+                           ' the required data in cache at the moment. Please try again later. You can also try increasing'
+                           ' "rows" and "max_rows" in "SentinelArguments" inside "add_sentinel_imgs.py".')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--output-dir', help='Directory to create dataset in.', type=str)
-    parser.add_argument('-z', '--zoom-level', help='Zoom level to use.', type=int)
+    parser.add_argument('-z', '--zoom-level', help='Zoom level to use.', type=int, default=500)
     parser.add_argument('-p', '--point', help='Bounding box, in WGS84 coords and format (LON, LAT). '\
                         'Possible to specify multiple.', type=str, action='append', default=[])
     parser.add_argument('-c', '--csv', help='Path to CSV file with "x_center" and "y_center" columns. '\
@@ -490,26 +497,26 @@ if __name__ == '__main__':
                         'the background patches.', type=bool, default=True)
     parser.add_argument('--unaligned-images-tiff-dir',
                         help='Directory into which to download high-res images. Omit to create a new one.',
-                        type=str, default='/data/swisstopo_custom_2056/')
+                        type=str, default=None)
     parser.add_argument('--aligned-images-tiff-dir',
                         help='Directory into which to store WGS84-aligned high-res images. Omit to create a new one.',
-                        type=str, default='/data/swisstopo_custom_wgs84/')
+                        type=str, default='./cache/swisstopo_custom_wgs84/')
     parser.add_argument('--aligned-low-res-tiff-dir',
                         help='Directory into which to store WGS84-aligned Sentinel images. Omit to create a new one.',
-                        type=str, default='/data/sentinel_wgs84/')
+                        type=str, default='./cache/sentinel_wgs84/')
     parser.add_argument('--aligned-instance-maps-tiff-dir',
                         help='Directory into which to store WGS84-aligned instance maps. Omit to create a new one.',
-                        type=str, default='/data/instance_maps_wgs84/')
+                        type=str, default='./cache/instance_maps_wgs84/')
     parser.add_argument('--aligned-seg-maps-tiff-dir',
                         help='Directory into which to store WGS84-aligned segmentation maps. Omit to create a new one.',
-                        type=str, default='/data/seg_maps_wgs84/')
+                        type=str, default='./cache/seg_maps_wgs84/')
     parser.add_argument('--download-or-transform-images', help='Whether to download/transform any Swisstopo tiles.',
-                        type=bool, default=False)
+                        type=bool, default=True)
     parser.add_argument('-j', '--num-jobs', help='Number of jobs to use. Omit to use floor(0.75 * core_count).',
                         type=int, default=None)
     parser.add_argument('-R', '--random-seed', help='Seed to use when creating the train/val splits randomly.',
                         type=int, default=1)
-    parser.add_argument('--seed', type=int, help='Random seed', default=42)
+    parser.add_argument('--seed', type=int, help='Random seed.', default=42)
     parser.add_argument('--geojson-dir', help='Path to the geojsons.', type=str, default=None)
         
     args = parser.parse_args()

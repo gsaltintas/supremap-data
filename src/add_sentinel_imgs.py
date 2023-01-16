@@ -20,8 +20,8 @@ import xml.etree.ElementTree as ET
 
 class SentinelArguments(object):
     bbox = None
-    rows = 1
-    max_rows = 1
+    rows = 20
+    max_rows = 20
     max_cloud_coverage_pct = 2
     date_range = None
     order_by_position = None

@@ -40,11 +40,25 @@ We use the [OpenSearchAPI]((https://scihub.copernicus.eu/twiki/do/view/SciHubUse
 See [here](https://scihub.copernicus.eu/userguide/BatchScripting) on the `dhusget.sh` script and [here](https://scihub.copernicus.eu/twiki/do/view/SciHubUserGuide/OpenSearchAPI) for API options.
 
 ## Full Dataset Creation
-We use the same dataset to train both pix2pixHD and Esrgan models and implemented a pipeline that 
+We use the same dataset to train both pix2pixHD and Real-ESRGAN models and implemented a pipeline that 
 - queries and downloads Swisstopo and Sentinel data along a certain bounding box or point
 - fixes alignment issues between two formats
 - creates segmentation and instance maps for each tile
 - patchifies the tiles (Swisstopo, Sentinel, segmentation map and instance map) into smaller (can be configured, by default 256) png's and saves the corresponding bounding box as a geojson. 
+
+CSV files with WGS-84 coordinates in the columns `x_center, y_center` can be provided as input to `create_imaginaire_dataset.py` in order to use Swisstopo tiles showing these specific locations.
+
+We have prepared the following CSV files for demonstration:
+
+- `csvs/supremap_swisstopo_zurich_lausanne_interlaken_mini.csv`: contains one point located in a Swisstopo tile showing ETH Zürich's Hauptgebäude
+- `csvs/supremap_swisstopo_zurich_lausanne_interlaken_small.csv`: contains a selection of 5 points from Zurich, Lausanne and Interlaken
+- `csvs/supremap_swisstopo_zurich_lausanne_interlaken_large.csv`: contains 309 points across Zurich, Lausanne and Interlaken
+
+Use the following commands to create corresponding datasets:
+
+- Mini dataset: `python src/create_imaginaire_dataset.py --csv=csvs/supremap_swisstopo_zurich_lausanne_interlaken_mini.csv --output-dir=datasets/supremap_swisstopo_zurich_lausanne_interlaken_mini`
+- Small dataset: `python src/create_imaginaire_dataset.py --csv=csvs/supremap_swisstopo_zurich_lausanne_interlaken_small.csv --output-dir=datasets/supremap_swisstopo_zurich_lausanne_interlaken_small`
+- Large dataset (creation will take very long): `python src/create_imaginaire_dataset.py --csv=csvs/supremap_swisstopo_zurich_lausanne_interlaken_large.csv --output-dir=datasets/supremap_swisstopo_zurich_lausanne_interlaken_large`
 
 Please see `create_imaginaire_dataset.py` for more details.
 
