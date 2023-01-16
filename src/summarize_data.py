@@ -13,7 +13,7 @@ color_mapping = {'water': 'blue', 'field': 'green', 'beach': 'brown',
                                         'background': (255, 255, 255)}
 color_back_mapping = {(255, 255, 255): 'background', (255, 0, 0): 'road',(0,0,0): 'building',  (0, 0, 255):'water', (0, 128, 0): 'field',
                     #   brown has different hues
-                      (0, 255, 0): 'beach',}
+                      (165, 42, 42): 'beach',}
 
 
 def summarize(path, hist=True):

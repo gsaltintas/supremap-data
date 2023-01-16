@@ -65,7 +65,8 @@ Please see `create_imaginaire_dataset.py` for more details.
 ### Dataset
 We perform the train-test split while creating the data. The total number of pixelwise instances of each class in our final dataset can be seen below:
 
-![Dataset Pixelwise Category Count](figures/supremap_imaginaire_mini_dataset_v4_filtered_count.png)
+![Dataset Pixelwise Category Count](figures/supremap_imaginaire_mini_dataset_v3_filtered_count.png)
+* Note that we have 19177 beach pixels in the training set and 2459 in the validation set.
 
 See some samples from out dataset in [figures folder](figures/data-samples/).
 
